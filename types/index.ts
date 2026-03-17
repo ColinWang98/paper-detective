@@ -39,6 +39,20 @@ export type {
   VersionFilterOptions,
 } from './ai.types';
 
+export type {
+  CaseSetup,
+  CaseProgressSnapshot,
+  EvidenceSubmission,
+  EvidenceType,
+  InvestigationTask,
+  InvestigationTaskStatus,
+  PaperStructureImportance,
+  PaperStructureKind,
+  PaperStructureNode,
+  PaperStructureStatus,
+  TaskProgress,
+} from './case.types';
+
 // Understanding status for Phase 2 (预留字段)
 export type UnderstandingStatus = 'new' | 'reviewing' | 'understood' | 'questioned';
 
