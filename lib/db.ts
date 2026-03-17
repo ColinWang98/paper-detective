@@ -1,7 +1,17 @@
 // Dexie.js database configuration for Paper Detective
 import Dexie, { Table } from 'dexie';
 
-import type { Paper, Highlight, Group, GroupHighlight, AIAnalysis, AIClueCard, IntelligenceBrief } from '@/types';
+import type {
+  AIAnalysis,
+  AIClueCard,
+  CaseSetup,
+  EvidenceSubmission,
+  Group,
+  GroupHighlight,
+  Highlight,
+  IntelligenceBrief,
+  Paper,
+} from '@/types';
 
 export class PaperDetectiveDB extends Dexie {
   papers!: Table<Paper>;
@@ -11,6 +21,8 @@ export class PaperDetectiveDB extends Dexie {
   aiAnalysis!: Table<AIAnalysis>;
   aiClueCards!: Table<AIClueCard>;
   intelligenceBriefs!: Table<IntelligenceBrief>;
+  caseSetups!: Table<CaseSetup>;
+  evidenceSubmissions!: Table<EvidenceSubmission>;
 
   constructor() {
     super('PaperDetectiveDB');
@@ -41,6 +53,12 @@ export class PaperDetectiveDB extends Dexie {
     // Version 3: Add Intelligence Briefs (Story 2.2.2)
     this.version(3).stores({
       intelligenceBriefs: '++id, paperId, generatedAt, model',
+    });
+
+    // Version 4: Add case investigation persistence
+    this.version(4).stores({
+      caseSetups: '++id, paperId, generatedAt, model, source',
+      evidenceSubmissions: '++id, paperId, taskId, highlightId, evidenceType, createdAt',
     });
   }
 }
@@ -121,7 +139,20 @@ export const dbHelpers = {
   },
 
   async deletePaper(id: number): Promise<void> {
-    await db.transaction('rw', [db.papers, db.highlights, db.groups, db.groupHighlights, db.aiAnalysis], async () => {
+    await db.transaction(
+      'rw',
+      [
+        db.papers,
+        db.highlights,
+        db.groups,
+        db.groupHighlights,
+        db.aiAnalysis,
+        db.aiClueCards,
+        db.intelligenceBriefs,
+        db.caseSetups,
+        db.evidenceSubmissions,
+      ],
+      async () => {
       // Delete all highlights for this paper
       const highlights = await db.highlights.where('paperId').equals(id).toArray();
       await db.highlights.bulkDelete(highlights.map(h => h.id!));
@@ -141,9 +172,26 @@ export const dbHelpers = {
       const analyses = await db.aiAnalysis.where('paperId').equals(id).toArray();
       await db.aiAnalysis.bulkDelete(analyses.map(a => a.id!));
 
+      // Delete AI clue cards
+      const clueCards = await db.aiClueCards.where('paperId').equals(id).toArray();
+      await db.aiClueCards.bulkDelete(clueCards.map(card => card.id!));
+
+      // Delete intelligence briefs
+      const briefs = await db.intelligenceBriefs.where('paperId').equals(id).toArray();
+      await db.intelligenceBriefs.bulkDelete(briefs.map(brief => brief.id!));
+
+      // Delete case setups
+      const caseSetups = await db.caseSetups.where('paperId').equals(id).toArray();
+      await db.caseSetups.bulkDelete(caseSetups.map(setup => setup.id!));
+
+      // Delete evidence submissions
+      const evidenceSubmissions = await db.evidenceSubmissions.where('paperId').equals(id).toArray();
+      await db.evidenceSubmissions.bulkDelete(evidenceSubmissions.map(submission => submission.id!));
+
       // Finally delete the paper
       await db.papers.delete(id);
-    });
+      }
+    );
   },
 
   // Highlight operations
@@ -340,6 +388,40 @@ export const dbHelpers = {
 
   async deleteIntelligenceBriefByPaper(paperId: number): Promise<void> {
     await db.intelligenceBriefs.where('paperId').equals(paperId).delete();
+  },
+
+  // Case setup operations
+  async saveCaseSetup(caseSetup: CaseSetup): Promise<number> {
+    await db.caseSetups.where('paperId').equals(caseSetup.paperId).delete();
+    return await db.caseSetups.add(caseSetup);
+  },
+
+  async getCaseSetup(paperId: number): Promise<CaseSetup | undefined> {
+    return await db.caseSetups.where('paperId').equals(paperId).first();
+  },
+
+  async deleteCaseSetupByPaper(paperId: number): Promise<void> {
+    await db.caseSetups.where('paperId').equals(paperId).delete();
+  },
+
+  // Evidence submission operations
+  async addEvidenceSubmission(submission: Omit<EvidenceSubmission, 'id'> | EvidenceSubmission): Promise<number> {
+    return await db.evidenceSubmissions.add(submission as EvidenceSubmission);
+  },
+
+  async getEvidenceSubmissions(paperId: number): Promise<EvidenceSubmission[]> {
+    return await db.evidenceSubmissions
+      .where('paperId')
+      .equals(paperId)
+      .sortBy('createdAt');
+  },
+
+  async deleteEvidenceSubmission(id: number): Promise<void> {
+    await db.evidenceSubmissions.delete(id);
+  },
+
+  async deleteEvidenceSubmissionsByPaper(paperId: number): Promise<void> {
+    await db.evidenceSubmissions.where('paperId').equals(paperId).delete();
   },
 
   // Reorder highlights within a group

@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 
-import type { Paper, Highlight, Group, AIClueCard } from '@/types';
+import type {
+  AIClueCard,
+  CaseSetup,
+  EvidenceSubmission,
+  Group,
+  Highlight,
+  InvestigationTask,
+  Paper,
+} from '@/types';
 
 import { dbHelpers } from './db';
 
@@ -33,6 +41,11 @@ interface PaperState {
 
   // AI Clue Cards (Story 2.2.1)
   aiClueCards: AIClueCard[];
+  caseSetup: CaseSetup | null;
+  investigationTasks: InvestigationTask[];
+  evidenceSubmissions: EvidenceSubmission[];
+  activeTaskId: string | null;
+  investigationPhase: 'setup' | 'investigate' | 'report';
 
   // UI state (HCI-compliant colors)
   selectedPriority: 'critical' | 'important' | 'interesting' | 'archived';
@@ -74,6 +87,12 @@ interface PaperState {
   updateAIClueCard: (id: number, changes: Partial<AIClueCard>) => Promise<void>;
   deleteAIClueCard: (id: number) => Promise<void>;
 
+  // Case investigation actions
+  loadCaseSetup: (paperId: number) => Promise<void>;
+  loadEvidenceSubmissions: (paperId: number) => Promise<void>;
+  setActiveTask: (taskId: string | null) => void;
+  setInvestigationPhase: (phase: 'setup' | 'investigate' | 'report') => void;
+
   // UI actions
   setSelectedPriority: (priority: 'critical' | 'important' | 'interesting' | 'archived') => void;
   toggleGroupExpanded: (groupId: number) => void;
@@ -93,6 +112,11 @@ export const usePaperStore = create<PaperState>((set, get) => ({
   highlights: [],
   groups: [],
   aiClueCards: [],
+  caseSetup: null,
+  investigationTasks: [],
+  evidenceSubmissions: [],
+  activeTaskId: null,
+  investigationPhase: 'setup',
   selectedPriority: 'important',
   expandedGroups: new Set(),
   history: [],
@@ -275,6 +299,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       void get().loadHighlights(paper.id!);
       void get().loadGroups(paper.id!);
       void get().loadAIClueCards(paper.id!);
+      void get().loadCaseSetup(paper.id!);
+      void get().loadEvidenceSubmissions(paper.id!);
     }
   },
 
@@ -307,7 +333,16 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       await dbHelpers.deletePaper(id);
       await get().loadPapers();
       if (get().currentPaper?.id === id) {
-        set({ currentPaper: null, highlights: [], groups: [] });
+        set({
+          currentPaper: null,
+          highlights: [],
+          groups: [],
+          caseSetup: null,
+          investigationTasks: [],
+          evidenceSubmissions: [],
+          activeTaskId: null,
+          investigationPhase: 'setup',
+        });
       }
       set({ isLoading: false });
     } catch (error) {
@@ -597,6 +632,35 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       throw error;
     }
   },
+
+  loadCaseSetup: async (paperId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const caseSetup = await dbHelpers.getCaseSetup(paperId);
+      set({
+        caseSetup: caseSetup ?? null,
+        investigationTasks: caseSetup?.tasks ?? [],
+        activeTaskId: caseSetup?.tasks.find((task) => task.status === 'available')?.id ?? null,
+        isLoading: false,
+      });
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
+  loadEvidenceSubmissions: async (paperId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const evidenceSubmissions = await dbHelpers.getEvidenceSubmissions(paperId);
+      set({ evidenceSubmissions, isLoading: false });
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
+  setActiveTask: (taskId) => set({ activeTaskId: taskId }),
+
+  setInvestigationPhase: (phase) => set({ investigationPhase: phase }),
 
   // UI actions
   setSelectedPriority: (priority) => set({ selectedPriority: priority }),
