@@ -35,7 +35,7 @@ export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) 
   const { onProgress, onBriefGenerated, onError } = options;
 
   // Zustand store
-  const { currentPaper, highlights } = usePaperStore();
+  const { currentPaper, highlights, caseSetup } = usePaperStore();
 
   // State
   const [state, setState] = useState<IntelligenceBriefStateValue>({
@@ -461,6 +461,7 @@ export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) 
     isSuccess: state.status === 'success',
     isError: state.status === 'error',
     hasBrief: state.brief !== null,
+    isReportLocked: Boolean(caseSetup && caseSetup.tasks.some(task => task.status !== 'completed')),
 
     // Actions
     generateBrief,

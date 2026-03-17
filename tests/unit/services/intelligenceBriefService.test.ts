@@ -88,6 +88,74 @@ describe('IntelligenceBriefService', () => {
     mockDbHelpers.getAllPapers.mockResolvedValue([
       { id: 1, title: 'Paper 1', authors: [], year: 2024, fileURL: '', fileName: '', uploadDate: '' },
     ] as any);
+    mockDbHelpers.getCaseSetup.mockResolvedValue({
+      paperId: mockPaperId,
+      caseTitle: 'The Baseline Dispute',
+      caseBackground: 'A paper claim needs verification.',
+      coreDispute: 'Whether the contribution is real.',
+      openingJudgment: 'Initial evidence is incomplete.',
+      investigationGoal: 'Verify the paper using direct text evidence.',
+      structureNodes: [],
+      tasks: [
+        {
+          id: 'task-1',
+          title: 'Define the Case',
+          question: 'What problem does the paper claim to solve?',
+          narrativeHook: 'Start with the opening claim.',
+          linkedStructureKinds: ['intro'],
+          requiredEvidenceTypes: ['claim'],
+          minEvidenceCount: 1,
+          unlocksTaskIds: [],
+          status: 'completed',
+        },
+        {
+          id: 'task-2',
+          title: 'Identify the Real Innovation',
+          question: 'What is genuinely new compared with prior work?',
+          narrativeHook: 'Separate novelty from framing.',
+          linkedStructureKinds: ['related-work', 'method'],
+          requiredEvidenceTypes: ['comparison', 'method'],
+          minEvidenceCount: 2,
+          unlocksTaskIds: [],
+          status: 'completed',
+        },
+        {
+          id: 'task-3',
+          title: 'Check Whether the Results Hold Up',
+          question: 'Do the experiments support the main claim?',
+          narrativeHook: 'Follow the evidence into the experiments.',
+          linkedStructureKinds: ['experiment', 'result'],
+          requiredEvidenceTypes: ['result'],
+          minEvidenceCount: 1,
+          unlocksTaskIds: [],
+          status: 'completed',
+        },
+        {
+          id: 'task-4',
+          title: 'Find the Weak Point',
+          question: 'What limitation or unresolved risk remains?',
+          narrativeHook: 'Find the unresolved risk.',
+          linkedStructureKinds: ['discussion', 'limitation'],
+          requiredEvidenceTypes: ['limitation'],
+          minEvidenceCount: 1,
+          unlocksTaskIds: [],
+          status: 'completed',
+        },
+      ],
+      generatedAt: '2026-03-17T00:00:00.000Z',
+      model: 'glm-4.7-flash',
+      source: 'ai-generated',
+    } as any);
+    mockDbHelpers.getEvidenceSubmissions.mockResolvedValue([
+      {
+        paperId: mockPaperId,
+        taskId: 'task-1',
+        highlightId: 1,
+        evidenceType: 'claim',
+        note: 'Problem statement evidence.',
+        createdAt: '2026-03-17T00:00:00.000Z',
+      },
+    ] as any);
 
     mockAiService.generateClipSummary.mockResolvedValue({
       summary: [
@@ -131,6 +199,28 @@ describe('IntelligenceBriefService', () => {
     expect(result.brief.completeness.overall).toBeGreaterThan(0);
     expect(mockCacheService.set).toHaveBeenCalled();
     expect(mockTrackCost).toHaveBeenCalled();
+  });
+
+  it('references completed investigation tasks in the final report', async () => {
+    const result = await intelligenceBriefService.generateBrief({
+      paperId: mockPaperId,
+      pdfText: mockPDFText,
+      highlights: mockHighlights,
+    });
+
+    expect(result.brief.caseFile.title).toContain('The Baseline Dispute');
+    expect(result.brief.clipSummary).toContain('Completed Tasks');
+    expect(result.brief.clipSummary).toContain('Define the Case');
+  });
+
+  it('reflects evidence-backed findings in report sections', async () => {
+    const result = await intelligenceBriefService.generateBrief({
+      paperId: mockPaperId,
+      pdfText: mockPDFText,
+      highlights: mockHighlights,
+    });
+
+    expect(result.brief.structuredInfo.limitations).toContain('Problem statement evidence.');
   });
 
   it('returns cached brief when available', async () => {

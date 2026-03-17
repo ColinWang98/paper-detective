@@ -4,6 +4,8 @@
 import { dbHelpers } from '@/lib/db';
 import type {
   AIClueCard,
+  CaseSetup,
+  EvidenceSubmission,
   TokenUsage,
   ClueCardType,
  Highlight } from '@/types';
@@ -116,6 +118,9 @@ export class IntelligenceBriefService {
     const { paperId, pdfText, highlights, forceRegenerate, onProgress } = options;
 
     try {
+      const caseSetup = await dbHelpers.getCaseSetup(paperId);
+      const evidenceSubmissions = await dbHelpers.getEvidenceSubmissions(paperId);
+
       // 1. Check cache (7-day TTL)
       if (!forceRegenerate) {
         const cached = await this.getCachedBrief(paperId);
@@ -170,7 +175,7 @@ export class IntelligenceBriefService {
       // 7. Build case file info
       const caseFile: CaseFileInfo = {
         caseNumber,
-        title: `案件档案 #${caseNumber}`,
+        title: caseSetup?.caseTitle || `案件档案 #${caseNumber}`,
         researchQuestion: structuredInfo.researchQuestion,
         coreMethod: structuredInfo.methods?.[0] || structuredInfo.methodology?.[0] || '未知方法',
         keyFindings: Array.isArray(structuredInfo.findings)
@@ -198,8 +203,8 @@ export class IntelligenceBriefService {
       const brief: IntelligenceBrief = {
         paperId,
         caseFile,
-        clipSummary,
-        structuredInfo,
+        clipSummary: this.buildFinalReportSummary(clipSummary, caseSetup),
+        structuredInfo: this.mergeEvidenceIntoStructuredInfo(structuredInfo, evidenceSubmissions),
         clueCards,
         userHighlights,
         tokenUsage,
@@ -258,6 +263,44 @@ export class IntelligenceBriefService {
       console.warn('Failed to get cached brief:', error);
       return null;
     }
+  }
+
+  private buildFinalReportSummary(summary: string, caseSetup: CaseSetup | undefined): string {
+    if (!caseSetup) {
+      return summary;
+    }
+
+    const completedTasks = caseSetup.tasks
+      .filter((task) => task.status === 'completed')
+      .map((task) => task.title);
+
+    if (completedTasks.length === 0) {
+      return summary;
+    }
+
+    return `${summary}\n\nCompleted Tasks: ${completedTasks.join(', ')}`;
+  }
+
+  private mergeEvidenceIntoStructuredInfo(
+    structuredInfo: StructuredInfo,
+    evidenceSubmissions: EvidenceSubmission[]
+  ): StructuredInfo {
+    if (evidenceSubmissions.length === 0) {
+      return structuredInfo;
+    }
+
+    const evidenceNotes = evidenceSubmissions
+      .map((submission) => submission.note?.trim())
+      .filter((note): note is string => Boolean(note));
+
+    if (evidenceNotes.length === 0) {
+      return structuredInfo;
+    }
+
+    return {
+      ...structuredInfo,
+      limitations: [...(structuredInfo.limitations || []), ...evidenceNotes],
+    };
   }
 
   /**

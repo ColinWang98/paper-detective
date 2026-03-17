@@ -33,6 +33,7 @@ export function IntelligenceBriefViewer({
     brief,
     error,
     progress,
+    isReportLocked,
     generateBrief,
     regenerateBrief,
     exportAsMarkdown,
@@ -206,6 +207,38 @@ export function IntelligenceBriefViewer({
                   配置 API Key
                 </button>
               </div>
+            </div>
+          </motion.div>
+        </div>
+        <Modal
+          isOpen={showAPIKeyModal}
+          title="配置 BigModel API Key"
+          confirmLabel="关闭"
+          cancelLabel=""
+          onConfirm={() => setShowAPIKeyModal(false)}
+          onCancel={() => setShowAPIKeyModal(false)}
+        >
+          <APIKeyManager />
+        </Modal>
+      </>
+    );
+  }
+
+  if (!brief && isReportLocked) {
+    return (
+      <>
+        <div className={`rounded-lg border border-dashed border-newspaper-border bg-newspaper-cream p-8 ${className}`}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center space-y-4 text-center"
+          >
+            <FileText className="h-12 w-12 text-gray-400" aria-hidden="true" />
+            <div>
+              <h3 className="mb-1 text-lg font-bold text-gray-900">Final Case Report Locked</h3>
+              <p className="text-sm text-gray-600">
+                Complete every core investigation task before generating the final case report.
+              </p>
             </div>
           </motion.div>
         </div>

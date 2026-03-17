@@ -127,4 +127,23 @@ describe('IntelligenceBriefViewer', () => {
 
     expect(screen.getByText('BigModel API Key')).toBeInTheDocument();
   });
+
+  it('keeps the final case report locked until all core tasks are complete', () => {
+    mockUseIntelligenceBrief.mockReturnValue({
+      status: 'success',
+      brief: null,
+      error: null,
+      progress: 100,
+      isReportLocked: true,
+      exportAsMarkdown: jest.fn(() => null),
+      exportAsBibTeX: jest.fn(() => null),
+      deleteBrief: jest.fn(),
+      generateBrief: jest.fn(),
+      regenerateBrief: jest.fn(),
+    });
+
+    render(<IntelligenceBriefViewer paperId={142} />);
+
+    expect(screen.getByRole('heading', { name: 'Final Case Report Locked' })).toBeInTheDocument();
+  });
 });
