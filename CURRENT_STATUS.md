@@ -1,6 +1,6 @@
 # Current Project Status
 
-Verified on `2026-03-15`.
+Verified on `2026-03-17`.
 
 ## Source Of Truth
 
@@ -16,49 +16,44 @@ Verified on `2026-03-15`.
 
 ## Current Phase
 
-The project is in a stabilization and delivery-hardening phase, not an MVP bootstrap phase.
+The dual-layer investigation MVP is now implemented and verified at the focused-suite level.
 
 Current priority order:
 
-1. Restore `npm run type-check`
-2. Repair broken export tests
-3. Verify core highlight/notebook/undo flows
-4. Verify AI service and cache flows
-5. Resume feature expansion only after the baseline is green
+1. Keep `npm run type-check`, `npm run type-check:tests`, and `npm run build` green
+2. Expand focused integration coverage around upload, setup generation, evidence submission, and report unlock
+3. Tighten the investigation layout so structure tree, task board, and report flow feel cohesive in the live UI
+4. Run a broader regression pass before release packaging
 
-## Next Product Direction
+## Delivered Direction
 
-With the stability baseline restored, the next major feature direction is a product-logic redesign rather than more generic AI helpers.
+The app now supports the planned dual-layer investigation loop:
 
-Planned direction:
-
-- move from `reader + notebook + summary` to a dual-layer investigation flow
-- let AI first generate a paper structure map and a suspense-light case setup
-- require user highlights to be submitted as task evidence
-- unlock the final report only after the core investigation tasks are completed
-
-Reference plan:
-
-- `docs/plans/2026-03-17-dual-layer-investigation-flow.md`
+- PDF upload enters a `setup` phase and triggers `Case Setup` generation
+- case framing, structure nodes, and 4 deterministic investigation tasks persist by `paperId`
+- highlights can be submitted as task evidence
+- task completion unlocks downstream tasks
+- the final report stays locked until all 4 core tasks complete, then the flow enters `report`
 
 ## Current Baseline
 
 - `npm run type-check` passes
 - `npm run type-check:tests` passes
-- Focused Jest verification passes for API export, API key management, intelligence brief API, and intelligence brief service flows
+- `npm run build` passes
+- Focused Jest verification passes for case setup, evidence submission, final report locking, and the browserless investigation happy path
 
 ## Remaining Risks
 
-- Historical docs in the repository describe older milestones and should not be treated as the final release state.
-- The workspace root still contains older scaffolding; the active product app is the `paper-detective/` subdirectory.
-- Full test suite has not yet been run end-to-end in this session.
+- Full Jest suite has not been run end-to-end in this session.
+- The live investigation layout still needs broader manual UX review, especially around structure-tree visibility and report-mode transitions.
+- Historical docs in the repository still describe older milestones and should not be treated as the current release state.
 
 ## Release Gate
 
-The next release candidate should not be considered ready until all of the following are true:
+The current MVP snapshot should not be treated as release-ready until all of the following are true:
 
 - `npm run type-check` passes
 - `npm run type-check:tests` passes
+- `npm run build` passes
 - focused Jest suites pass with `--runInBand`
-- docs match the active Next.js app structure
-- one manual happy-path verification is recorded
+- one manual upload -> setup -> evidence -> report walkthrough is recorded

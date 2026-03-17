@@ -693,10 +693,15 @@ export const usePaperStore = create<PaperState>((set, get) => ({
             createdAt,
           },
         ];
+        const nextTasks = evaluateTaskProgress(state.investigationTasks, nextEvidenceSubmissions);
+        const isReportUnlocked = nextTasks.length > 0 && nextTasks.every((task) => task.status === 'completed');
+        const nextActiveTask = nextTasks.find((task) => task.status === 'available' || task.status === 'in_progress');
 
         return {
           evidenceSubmissions: nextEvidenceSubmissions,
-          investigationTasks: evaluateTaskProgress(state.investigationTasks, nextEvidenceSubmissions),
+          investigationTasks: nextTasks,
+          activeTaskId: nextActiveTask?.id ?? null,
+          investigationPhase: isReportUnlocked ? 'report' : state.investigationPhase,
           isLoading: false,
         };
       });

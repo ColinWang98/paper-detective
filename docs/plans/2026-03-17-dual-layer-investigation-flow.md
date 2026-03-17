@@ -2,6 +2,16 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+## Execution Status
+
+- Completed on `2026-03-17`
+- Tasks `1` through `10` were implemented in order with per-task verification before continuing
+- Final Task 10 verification covered:
+  - `npm.cmd test -- tests\\integration\\case-investigation-happy-path.test.tsx --runInBand`
+  - `npm.cmd run type-check`
+  - `npm.cmd run type-check:tests`
+  - `npm.cmd run build`
+
 **Goal:** Convert the current PDF reader + notebook app into a dual-layer investigation experience where AI first builds a paper structure map and a suspense-light case task tree, then the player gathers evidence from the paper to complete tasks and unlock the final case report.
 
 **Architecture:** Keep the current `Next.js app + Zustand store + IndexedDB + AI services` foundation. Add a new `Case Setup` stage between PDF upload and the existing notebook/brief flow. The bottom layer remains a paper structure tree derived from the PDF. The top layer is a task-oriented case tree with suspense-light framing. User highlights become evidence submissions tied to tasks. The current `IntelligenceBrief` becomes the final case report instead of the first AI output.

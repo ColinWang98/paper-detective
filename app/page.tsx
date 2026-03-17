@@ -8,6 +8,7 @@ import DetectiveNotebook from "@/components/DetectiveNotebook";
 import Header from "@/components/Header";
 import RealPDFViewer from "@/components/RealPDFViewer";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { extractPDFText } from "@/lib/pdf";
 import { usePaperStore } from "@/lib/store";
 
 export const dynamic = 'force-dynamic';
@@ -19,16 +20,75 @@ export default function Home() {
     currentPaper,
     caseSetup,
     investigationPhase,
+    loadCaseSetup,
     setInvestigationPhase,
   } = usePaperStore();
   const [activeMode, setActiveMode] = useState<'notes' | 'brief'>('notes');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isGeneratingCaseSetup, setIsGeneratingCaseSetup] = useState(false);
 
   useEffect(() => {
     if (!currentPaper?.id) {
       setActiveMode('notes');
     }
   }, [currentPaper?.id]);
+
+  useEffect(() => {
+    if (!currentPaper?.id || !pdfFile || investigationPhase !== 'setup' || caseSetup || isGeneratingCaseSetup) {
+      return;
+    }
+
+    let isCancelled = false;
+    const paperId = currentPaper.id;
+
+    const generateCaseSetup = async () => {
+      setIsGeneratingCaseSetup(true);
+
+      try {
+        const pdfText = await extractPDFText(pdfFile);
+        const response = await fetch('/api/ai/case-setup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            paperId,
+            pdfText,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to generate case setup: ${response.statusText}`);
+        }
+
+        if (!isCancelled) {
+          const result = await response.json();
+
+          if (result?.success && result.data) {
+            usePaperStore.setState({
+              caseSetup: result.data,
+              investigationTasks: result.data.tasks ?? [],
+              activeTaskId: result.data.tasks?.find((task: { status: string; id: string }) => task.status === 'available')?.id ?? null,
+            });
+          } else {
+            await loadCaseSetup(paperId);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to generate case setup:', error);
+      } finally {
+        if (!isCancelled) {
+          setIsGeneratingCaseSetup(false);
+        }
+      }
+    };
+
+    void generateCaseSetup();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [caseSetup, currentPaper?.id, investigationPhase, loadCaseSetup, pdfFile]);
 
   const shouldShowCaseSetup = Boolean(
     currentPaper?.id &&
