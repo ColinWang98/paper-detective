@@ -64,6 +64,10 @@ const DEFAULT_TASKS: Array<Omit<InvestigationTask, 'status'>> = [
 ];
 
 export class CaseSetupService {
+  async getCaseSetup(paperId: number): Promise<CaseSetup | null> {
+    return (await dbHelpers.getCaseSetup(paperId)) ?? null;
+  }
+
   async generateCaseSetup(options: GenerateCaseSetupOptions): Promise<CaseSetup> {
     const { paperId, pdfText, forceRegenerate = false } = options;
 
