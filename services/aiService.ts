@@ -24,6 +24,11 @@ interface ChatCompletionOptions {
   stream?: boolean;
 }
 
+interface StructuredDataOptions {
+  prompt: string;
+  maxTokens: number;
+}
+
 class AIError extends Error {
   constructor(
     public code: AIErrorCode,
@@ -135,6 +140,23 @@ export class AIService {
 
   async generateText(options: ChatCompletionOptions): Promise<string> {
     return this.requestChatCompletion(options);
+  }
+
+  async generateStructuredData<T>(options: StructuredDataOptions): Promise<T> {
+    const response = await this.requestChatCompletion({
+      prompt: options.prompt,
+      maxTokens: options.maxTokens,
+      stream: false,
+    });
+
+    const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || response.match(/\{[\s\S]*\}/);
+    const rawJson = jsonMatch?.[1] ?? jsonMatch?.[0];
+
+    if (!rawJson) {
+      throw new AIError('PARSE_ERROR', 'Structured AI response did not contain valid JSON');
+    }
+
+    return JSON.parse(rawJson) as T;
   }
 
   private async requestChatCompletion(options: ChatCompletionOptions): Promise<string> {
