@@ -1,0 +1,48 @@
+{
+  "paperId": 3,
+  "paperTitle": "GPT-4 Technical Report",
+  "authors": ["OpenAI"],
+  "year": 2023,
+  "highlights": [
+    {
+      "id": "hl-001",
+      "text": "GPT-4 is a large-scale, multimodal model which can accept image and text inputs and produce text outputs.",
+      "color": "red",
+      "priority": "critical",
+      "pageNumber": 1,
+      "position": { "x": 100, "y": 180, "width": 360, "height": 22 },
+      "createdAt": "2026-02-10T10:10:00Z",
+      "note": "Core capability"
+    },
+    {
+      "id": "hl-002",
+      "text": "The model is trained on a diverse corpus of data including web pages, books, and code.",
+      "color": "yellow",
+      "priority": "high",
+      "pageNumber": 2,
+      "position": { "x": 100, "y": 220, "width": 340, "height": 20 },
+      "createdAt": "2026-02-10T10:11:00Z",
+      "note": "Training data"
+    },
+    {
+      "id": "hl-003",
+      "text": "GPT-4 exhibits human-level performance on various professional and academic benchmarks.",
+      "color": "orange",
+      "priority": "medium",
+      "pageNumber": 5,
+      "position": { "x": 100, "y": 280, "width": 370, "height": 22 },
+      "createdAt": "2026-02-10T10:12:00Z",
+      "note": "Performance claim"
+    },
+    {
+      "id": "hl-004",
+      "text": "The model has some limitations including hallucinations, lack of recent knowledge, and potential biases.",
+      "color": "gray",
+      "priority": "low",
+      "pageNumber": 8,
+      "position": { "x": 100, "y": 320, "width": 390, "height": 24 },
+      "createdAt": "2026-02-10T10:13:00Z",
+      "note": "Limitations"
+    }
+  ]
+}

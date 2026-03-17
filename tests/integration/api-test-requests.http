@@ -1,0 +1,322 @@
+### Paper Detective - API Integration Test Requests
+### Use with VS Code REST Client extension or similar tools
+### Base URL: http://localhost:3000
+
+@baseUrl = http://localhost:3000
+@paperId = 1
+@apiToken =Bearer YOUR_API_TOKEN_HERE
+
+###############################################################################
+### INTELLIGENCE BRIEF API TESTS
+###############################################################################
+
+### Test 1.1.1: Generate Intelligence Brief - Valid Request
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "This is a sample academic paper text. It contains research about artificial intelligence and machine learning. The paper presents a novel approach to neural network architecture that improves performance on image recognition tasks. Our method achieves 95% accuracy on the benchmark dataset.",
+  "highlights": [
+    {
+      "id": 1,
+      "paperId": 1,
+      "pageNumber": 1,
+      "text": "novel approach to neural network architecture",
+      "priority": "critical",
+      "color": "red",
+      "position": { "x": 100, "y": 100, "width": 200, "height": 20 },
+      "timestamp": "2026-02-11T10:00:00Z",
+      "createdAt": "2026-02-11T10:00:00Z"
+    }
+  ],
+  "forceRegenerate": false
+}
+
+###
+
+### Test 1.1.2: Missing paperId
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "pdfText": "Sample text",
+  "highlights": []
+}
+
+###
+
+### Test 1.1.3: Invalid paperId type
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": "invalid",
+  "pdfText": "Sample text",
+  "highlights": []
+}
+
+###
+
+### Test 1.1.4: Empty pdfText
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "",
+  "highlights": []
+}
+
+###
+
+### Test 1.1.5: Invalid highlights format
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Sample text",
+  "highlights": "not an array"
+}
+
+###
+
+### Test 1.2.1: Retrieve Cached Brief
+GET {{baseUrl}}/api/ai/intelligence-brief?paperId=1
+
+###
+
+### Test 1.2.2: Retrieve Non-existent Brief
+GET {{baseUrl}}/api/ai/intelligence-brief?paperId=99999
+
+###
+
+### Test 1.2.3: Invalid paperId Parameter
+GET {{baseUrl}}/api/ai/intelligence-brief?paperId=invalid
+
+###
+
+### Test 1.3.1: Delete Cached Brief
+DELETE {{baseUrl}}/api/ai/intelligence-brief?paperId=1
+
+###
+
+### Test 1.3.2: Delete Non-existent Brief
+DELETE {{baseUrl}}/api/ai/intelligence-brief?paperId=99999
+
+###
+
+###############################################################################
+### CLIP SUMMARY API TESTS
+###############################################################################
+
+### Test: Generate Clip Summary
+POST {{baseUrl}}/api/ai/clip-summary
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Sample academic paper text for clip summary generation.",
+  "highlights": []
+}
+
+###
+
+###############################################################################
+### STRUCTURED INFO API TESTS
+###############################################################################
+
+### Test: Extract Structured Information
+POST {{baseUrl}}/api/ai/structured-info
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Sample academic paper text for structured information extraction.",
+  "highlights": []
+}
+
+###
+
+###############################################################################
+### CLUE CARDS API TESTS
+###############################################################################
+
+### Test: Generate AI Clue Cards
+POST {{baseUrl}}/api/ai/clue-cards
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Sample academic paper text for clue card generation.",
+  "highlights": [],
+  "cardTypes": ["question", "method", "finding", "limitation"]
+}
+
+###
+
+### Test: Retrieve Clue Cards
+GET {{baseUrl}}/api/ai/clue-cards?paperId=1
+
+###
+
+###############################################################################
+### PDF PROCESSING API TESTS
+###############################################################################
+
+### Test: Extract PDF Text
+POST {{baseUrl}}/api/pdf/extract-text
+Content-Type: application/json
+
+{
+  "pdfUrl": "path/to/sample.pdf",
+  "startPage": 1,
+  "endPage": 5
+}
+
+###
+
+### Test: Get PDF Stats
+POST {{baseUrl}}/api/pdf/stats
+Content-Type: application/json
+
+{
+  "pdfUrl": "path/to/sample.pdf"
+}
+
+###
+
+###############################################################################
+### EXPORT API TESTS
+###############################################################################
+
+### Test: Export as Markdown
+POST {{baseUrl}}/api/export/markdown
+Content-Type: application/json
+
+{
+  "brief": {
+    "caseFile": {
+      "caseNumber": 142,
+      "title": "Sample Paper Title",
+      "authors": ["Author One", "Author Two"],
+      "publicationDate": "2024-01-01",
+      "tags": ["AI", "Machine Learning"],
+      "completenessScore": 85,
+      "researchQuestion": "What is the research question?",
+      "coreMethod": "Research methodology description",
+      "keyFindings": ["Finding 1", "Finding 2", "Finding 3"]
+    },
+    "clipSummary": "Three-sentence summary of the paper.",
+    "structuredInfo": {
+      "researchQuestion": "Detailed research question",
+      "methods": ["Method 1", "Method 2"],
+      "findings": ["Finding 1", "Finding 2"],
+      "limitations": ["Limitation 1"]
+    },
+    "clueCards": [
+      {
+        "id": 1,
+        "type": "question",
+        "content": "Research question",
+        "confidence": 90
+      }
+    ],
+    "tokenUsage": { "input": 5000, "output": 1000, "total": 6000 },
+    "cost": 0.05,
+    "generatedAt": "2026-02-11T10:00:00Z"
+  }
+}
+
+###
+
+### Test: Export as BibTeX
+POST {{baseUrl}}/api/export/bibtex
+Content-Type: application/json
+
+{
+  "brief": {
+    "caseFile": {
+      "caseNumber": 142,
+      "title": "Sample Paper Title",
+      "authors": ["Author One", "Author Two"],
+      "publicationDate": "2024-01-01",
+      "tags": ["AI", "Machine Learning"],
+      "completenessScore": 85,
+      "researchQuestion": "What is the research question?",
+      "coreMethod": "Research methodology description",
+      "keyFindings": ["Finding 1", "Finding 2", "Finding 3"]
+    },
+    "clipSummary": "Three-sentence summary of the paper.",
+    "structuredInfo": {
+      "researchQuestion": "Detailed research question",
+      "methods": ["Method 1", "Method 2"],
+      "findings": ["Finding 1", "Finding 2"],
+      "limitations": ["Limitation 1"]
+    },
+    "clueCards": [],
+    "tokenUsage": { "input": 5000, "output": 1000, "total": 6000 },
+    "cost": 0.05,
+    "generatedAt": "2026-02-11T10:00:00Z"
+  }
+}
+
+###
+
+###############################################################################
+### END-TO-END WORKFLOW TEST SCENARIOS
+###############################################################################
+
+### Scenario 1: Complete User Journey
+### Step 1: Upload and Process PDF
+### Step 2: Generate Intelligence Brief
+### Step 3: Retrieve Brief
+### Step 4: Export to Markdown
+### Step 5: Export to BibTeX
+
+### Note: Execute the following sequence in order
+### 1. POST /api/ai/intelligence-brief
+### 2. GET /api/ai/intelligence-brief?paperId=X
+### 3. POST /api/export/markdown
+### 4. POST /api/export/bibtex
+
+###############################################################################
+### EDGE CASE TESTS
+###############################################################################
+
+### Test: Special Characters and Unicode
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Test with unicode: 中文文本, 日本語, العربية, עברית. Special chars: <>&\"'",
+  "highlights": []
+}
+
+###
+
+### Test: Very Long PDF Text (close to limit)
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "a".repeat(400000),
+  "highlights": []
+}
+
+###
+
+### Test: Empty Highlights Array
+POST {{baseUrl}}/api/ai/intelligence-brief
+Content-Type: application/json
+
+{
+  "paperId": 1,
+  "pdfText": "Sample text without highlights",
+  "highlights": []
+}
+
+###

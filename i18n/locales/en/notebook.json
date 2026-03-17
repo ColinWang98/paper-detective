@@ -1,0 +1,36 @@
+{
+  "title": "📓 Detective Notebook",
+  "newGroup": "New Group",
+  "createGroup": "Create Group",
+  "groupName": "Group Name",
+  "groupPlaceholder": "e.g., Methods, Results, Discussion",
+  "groupHint": "After creating a group, you can drag evidence here to organize.",
+  "tabs": {
+    "evidence": "Evidence",
+    "ai": "AI Clues"
+  },
+  "inbox": {
+    "title": "📥 Inbox",
+    "empty": "Select text in the PDF on the left to auto-add to this inbox",
+    "dropHint": "Drag evidence here",
+    "count": "{count} items",
+    "enoughClues": "You have enough clues. Switch to the AI Clues tab to generate a summary.",
+    "needMore": "Continue collecting more evidence for a complete analysis."
+  },
+  "groups": {
+    "title": "Groups",
+    "empty": "No groups yet",
+    "dropHere": "Drag evidence here",
+    "dropToAdd": "Drop to add to this group"
+  },
+  "highlights": {
+    "title": "Highlights",
+    "empty": "No highlights",
+    "hasNote": "📝 Has note",
+    "page": "p.{page}"
+  },
+  "assistant": {
+    "title": "🤖 Clip Assistant",
+    "mode": "Mode B"
+  }
+}

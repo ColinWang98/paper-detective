@@ -1,0 +1,30 @@
+# Build outputs
+.next/
+out/
+dist/
+
+# Dependencies
+node_modules/
+
+# Service Worker (auto-generated)
+public/sw.js
+
+# PWA Assets
+public/icons/
+public/splash/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+
+# Misc
+.DS_Store
+*.pem

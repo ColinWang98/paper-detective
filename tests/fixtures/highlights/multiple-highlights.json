@@ -1,0 +1,53 @@
+{
+  "paperId": 2,
+  "paperTitle": "BERT: Pre-training of Deep Bidirectional Transformers",
+  "authors": ["Devlin et al."],
+  "year": 2018,
+  "highlights": [
+    {
+      "id": "hl-001",
+      "text": "We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers.",
+      "color": "red",
+      "priority": "critical",
+      "pageNumber": 1,
+      "position": {
+        "x": 100,
+        "y": 150,
+        "width": 350,
+        "height": 22
+      },
+      "createdAt": "2026-02-10T10:05:00Z",
+      "note": "Main contribution"
+    },
+    {
+      "id": "hl-002",
+      "text": "BERT is designed to pre-train deep bidirectional representations from unlabeled text by jointly conditioning on both left and right context in all layers.",
+      "color": "yellow",
+      "priority": "high",
+      "pageNumber": 2,
+      "position": {
+        "x": 100,
+        "y": 300,
+        "width": 380,
+        "height": 24
+      },
+      "createdAt": "2026-02-10T10:06:00Z",
+      "note": "Key mechanism"
+    },
+    {
+      "id": "hl-003",
+      "text": "We show that pre-trained representations eliminate the need for many heavily-engineered task-specific architectures.",
+      "color": "orange",
+      "priority": "medium",
+      "pageNumber": 3,
+      "position": {
+        "x": 100,
+        "y": 250,
+        "width": 320,
+        "height": 20
+      },
+      "createdAt": "2026-02-10T10:07:00Z",
+      "note": "Practical impact"
+    }
+  ]
+}

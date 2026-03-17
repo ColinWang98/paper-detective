@@ -1,0 +1,72 @@
+{
+  "app": {
+    "name": "Paper Detective",
+    "tagline": "Reconstruct research papers as crime scenes",
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "done": "Done",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "more": "More",
+    "less": "Less"
+  },
+  "header": {
+    "title": "📰 Science Observer",
+    "subtitle": "Vol.2024 - No.{caseNumber}",
+    "caseFile": "Case File #{caseNumber}",
+    "caseFileLabel": "CASE FILE",
+    "exportReport": "Export Report",
+    "export": "Export",
+    "undo": "Undo",
+    "redo": "Redo",
+    "menu": "Menu",
+    "keyboardShortcuts": "Ctrl+Z Undo | Ctrl+Y Redo"
+  },
+  "mobile": {
+    "newspaperName": "Science Observer",
+    "caseNumber": "Case #{caseNumber}",
+    "export": "Export",
+    "swipeToNavigate": "Swipe left/right to navigate",
+    "pinchToZoom": "Pinch to zoom",
+    "selectToHighlight": "Select text to highlight"
+  },
+  "theme": {
+    "title": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "toggle": "Toggle Theme",
+    "keyboardShortcut": "Shortcut: ⌘/Ctrl+Shift+L"
+  },
+  "language": {
+    "title": "Language",
+    "zh": "中文",
+    "en": "English",
+    "switch": "Switch Language"
+  },
+  "empty": {
+    "title": "Welcome to Paper Detective",
+    "description": "Import a paper to start your investigation",
+    "action": "Select PDF File"
+  },
+  "errors": {
+    "generic": "An error occurred, please try again later",
+    "network": "Network connection failed",
+    "timeout": "Request timeout",
+    "notFound": "Not found",
+    "unauthorized": "Unauthorized",
+    "validation": "Validation failed",
+    "server": "Server error"
+  }
+}

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560"/>
+      <stop offset="100%" style="stop-color:#ff6b6b"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="192" height="192" rx="48" fill="url(#bg)"/>
+  
+  <!-- Magnifying Glass -->
+  <circle cx="80" cy="80" r="40" fill="none" stroke="url(#accent)" stroke-width="12"/>
+  <line x1="110" y1="110" x2="155" y2="155" stroke="url(#accent)" stroke-width="16" stroke-linecap="round"/>
+  
+  <!-- Document lines -->
+  <line x1="60" y1="140" x2="132" y2="140" stroke="#4a4a6a" stroke-width="4" stroke-linecap="round"/>
+  <line x1="60" y1="155" x2="100" y2="155" stroke="#4a4a6a" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Highlights -->
+  <rect x="50" y="45" width="25" height="8" fill="#ffd93d" rx="2" opacity="0.8"/>
+  <rect x="85" y="55" width="20" height="8" fill="#ff6b6b" rx="2" opacity="0.8"/>
+</svg>

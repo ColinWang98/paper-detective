@@ -1,0 +1,56 @@
+{
+  "viewer": {
+    "title": "PDF阅读器",
+    "import": "导入PDF",
+    "selectFile": "选择PDF文件",
+    "upload": "上传PDF",
+    "page": "页",
+    "pageOf": "{current} / {total}",
+    "zoom": "缩放",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "resetZoom": "重置缩放",
+    "fullscreen": "全屏阅读",
+    "exitFullscreen": "退出全屏",
+    "close": "关闭PDF",
+    "loading": "加载中...",
+    "error": {
+      "title": "PDF加载失败",
+      "description": "请尝试重新上传文件",
+      "invalidType": "请选择PDF文件",
+      "tooLarge": "文件过大，请选择小于50MB的PDF文件"
+    }
+  },
+  "highlight": {
+    "title": "高亮",
+    "add": "添加到收集箱",
+    "confirm": "确定",
+    "cancel": "取消",
+    "priority": {
+      "critical": "关键",
+      "important": "重要",
+      "interesting": "有趣",
+      "archived": "存档",
+      "labels": {
+        "red": "🔴 关键",
+        "yellow": "🟡 重要",
+        "orange": "🟠 有趣",
+        "gray": "⚪ 存档"
+      }
+    },
+    "tooltip": "选择文本自动添加到收集箱 | 拖拽高亮到右侧分组 | 点击AI卡片定位原文",
+    "mobileTooltip": "左右滑动翻页 | 双指缩放 | 选择文本添加高亮"
+  },
+  "navigation": {
+    "previous": "上一页",
+    "next": "下一页",
+    "first": "第一页",
+    "last": "最后一页",
+    "goTo": "跳转到",
+    "pageNumber": "页码"
+  },
+  "empty": {
+    "title": "暂无PDF",
+    "description": "请导入PDF文件开始阅读"
+  }
+}

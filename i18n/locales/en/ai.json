@@ -1,0 +1,49 @@
+{
+  "clueCard": {
+    "title": "AI Clue Card",
+    "types": {
+      "question": "Research Question",
+      "method": "Method",
+      "finding": "Key Finding",
+      "limitation": "Limitation",
+      "custom": "Custom"
+    },
+    "icons": {
+      "question": "🔴",
+      "method": "🔵",
+      "finding": "🟢",
+      "limitation": "🟡",
+      "custom": "📝"
+    },
+    "sources": {
+      "clip-summary": "Clip Summary",
+      "structured-info": "Structured",
+      "custom-insight": "Custom Insight",
+      "ai-generated": "AI Generated"
+    },
+    "confidence": "Confidence",
+    "page": "p.",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "associatedHighlights": "Associated Highlights",
+    "moreHighlights": "+{count} more...",
+    "cost": "${cost}¢"
+  },
+  "analysis": {
+    "title": "AI Analysis",
+    "start": "Start Analysis",
+    "analyzing": "Analyzing...",
+    "complete": "Analysis Complete",
+    "error": "Analysis Failed",
+    "results": "Analysis Results"
+  },
+  "generate": {
+    "title": "Generate Clues",
+    "description": "Generate AI analysis clues based on collected evidence",
+    "button": "Generate Clue Cards"
+  }
+}

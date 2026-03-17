@@ -1,0 +1,36 @@
+{
+  "title": "📓 侦探笔记本",
+  "newGroup": "新建分组",
+  "createGroup": "创建分组",
+  "groupName": "分组名称",
+  "groupPlaceholder": "例如：方法论、实验结果、讨论",
+  "groupHint": "创建分组后，可以将证据拖拽到此处进行分类整理。",
+  "tabs": {
+    "evidence": "证据分组",
+    "ai": "AI 线索"
+  },
+  "inbox": {
+    "title": "📥 收集箱",
+    "empty": "在左侧PDF中选择文本，自动添加到此收集箱",
+    "dropHint": "拖拽证据至此",
+    "count": "{count} 条证据",
+    "enoughClues": "已有足够线索，建议切换到 AI 线索标签生成摘要。",
+    "needMore": "继续收集更多证据以获得完整分析。"
+  },
+  "groups": {
+    "title": "分组",
+    "empty": "暂无分组",
+    "dropHere": "拖拽证据到此处",
+    "dropToAdd": "松开以添加到此分组"
+  },
+  "highlights": {
+    "title": "高亮",
+    "empty": "暂无高亮",
+    "hasNote": "📝 有笔记",
+    "page": "p.{page}"
+  },
+  "assistant": {
+    "title": "🤖 Clip助手",
+    "mode": "B模式"
+  }
+}

@@ -1,0 +1,7 @@
+# Jest ignore patterns
+.next/
+node_modules/
+coverage/
+dist/
+build/
+*.log

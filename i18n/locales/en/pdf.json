@@ -1,0 +1,56 @@
+{
+  "viewer": {
+    "title": "PDF Viewer",
+    "import": "Import PDF",
+    "selectFile": "Select PDF File",
+    "upload": "Upload PDF",
+    "page": "Page",
+    "pageOf": "{current} / {total}",
+    "zoom": "Zoom",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "resetZoom": "Reset Zoom",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit Fullscreen",
+    "close": "Close PDF",
+    "loading": "Loading...",
+    "error": {
+      "title": "Failed to Load PDF",
+      "description": "Please try uploading the file again",
+      "invalidType": "Please select a PDF file",
+      "tooLarge": "File too large, please select a PDF file under 50MB"
+    }
+  },
+  "highlight": {
+    "title": "Highlight",
+    "add": "Add to Collection",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "priority": {
+      "critical": "Critical",
+      "important": "Important",
+      "interesting": "Interesting",
+      "archived": "Archived",
+      "labels": {
+        "red": "🔴 Critical",
+        "yellow": "🟡 Important",
+        "orange": "🟠 Interesting",
+        "gray": "⚪ Archived"
+      }
+    },
+    "tooltip": "Select text to auto-add to collection | Drag highlights to groups | Click AI cards to locate source",
+    "mobileTooltip": "Swipe to navigate | Pinch to zoom | Select text to highlight"
+  },
+  "navigation": {
+    "previous": "Previous",
+    "next": "Next",
+    "first": "First",
+    "last": "Last",
+    "goTo": "Go to",
+    "pageNumber": "Page Number"
+  },
+  "empty": {
+    "title": "No PDF",
+    "description": "Please import a PDF file to start reading"
+  }
+}

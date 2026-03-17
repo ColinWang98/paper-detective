@@ -1,0 +1,49 @@
+{
+  "clueCard": {
+    "title": "AI线索卡片",
+    "types": {
+      "question": "研究问题",
+      "method": "调查手段",
+      "finding": "关键证据",
+      "limitation": "疑点",
+      "custom": "自定义"
+    },
+    "icons": {
+      "question": "🔴",
+      "method": "🔵",
+      "finding": "🟢",
+      "limitation": "🟡",
+      "custom": "📝"
+    },
+    "sources": {
+      "clip-summary": "Clip摘要",
+      "structured-info": "结构化",
+      "custom-insight": "自定义",
+      "ai-generated": "AI生成"
+    },
+    "confidence": "置信度",
+    "page": "页",
+    "expand": "展开",
+    "collapse": "折叠",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "associatedHighlights": "关联高亮",
+    "moreHighlights": "+{count} 更多...",
+    "cost": "${cost}¢"
+  },
+  "analysis": {
+    "title": "AI分析",
+    "start": "开始分析",
+    "analyzing": "分析中...",
+    "complete": "分析完成",
+    "error": "分析失败",
+    "results": "分析结果"
+  },
+  "generate": {
+    "title": "生成线索",
+    "description": "基于收集的证据生成AI分析线索",
+    "button": "生成线索卡片"
+  }
+}
