@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { IntelligenceBriefViewer } from "@/components/brief/IntelligenceBriefViewer";
+import { CaseSetupPanel } from "@/components/case/CaseSetupPanel";
 import DetectiveNotebook from "@/components/DetectiveNotebook";
 import Header from "@/components/Header";
 import RealPDFViewer from "@/components/RealPDFViewer";
@@ -14,7 +15,12 @@ export const dynamic = 'force-dynamic';
 export default function Home() {
   // Enable keyboard shortcuts for undo/redo
   useKeyboardShortcuts();
-  const { currentPaper } = usePaperStore();
+  const {
+    currentPaper,
+    caseSetup,
+    investigationPhase,
+    setInvestigationPhase,
+  } = usePaperStore();
   const [activeMode, setActiveMode] = useState<'notes' | 'brief'>('notes');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
@@ -23,6 +29,12 @@ export default function Home() {
       setActiveMode('notes');
     }
   }, [currentPaper?.id]);
+
+  const shouldShowCaseSetup = Boolean(
+    currentPaper?.id &&
+    pdfFile &&
+    investigationPhase === 'setup'
+  );
 
   return (
     <div className="min-h-screen vintage-paper">
@@ -44,7 +56,12 @@ export default function Home() {
 
           {/* Analysis Section */}
           <div className="newspaper-border bg-white/80 backdrop-blur-sm overflow-hidden">
-            {activeMode === 'notes' ? (
+            {shouldShowCaseSetup ? (
+              <CaseSetupPanel
+                caseSetup={caseSetup}
+                onBeginInvestigation={() => setInvestigationPhase('investigate')}
+              />
+            ) : activeMode === 'notes' ? (
               <DetectiveNotebook pdfFile={pdfFile} />
             ) : currentPaper?.id ? (
               <IntelligenceBriefViewer
