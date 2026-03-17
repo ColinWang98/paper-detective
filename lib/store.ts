@@ -12,6 +12,7 @@ import type {
 } from '@/types';
 
 import { dbHelpers } from './db';
+import { evaluateTaskProgress } from './investigationRules';
 
 // Undo/Redo types
 export type ActionType = 'add' | 'update' | 'delete' | 'move';
@@ -679,8 +680,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         createdAt,
       });
 
-      set((state) => ({
-        evidenceSubmissions: [
+      set((state) => {
+        const nextEvidenceSubmissions = [
           ...state.evidenceSubmissions,
           {
             id,
@@ -691,9 +692,14 @@ export const usePaperStore = create<PaperState>((set, get) => ({
             note,
             createdAt,
           },
-        ],
-        isLoading: false,
-      }));
+        ];
+
+        return {
+          evidenceSubmissions: nextEvidenceSubmissions,
+          investigationTasks: evaluateTaskProgress(state.investigationTasks, nextEvidenceSubmissions),
+          isLoading: false,
+        };
+      });
 
       return id;
     } catch (error) {
