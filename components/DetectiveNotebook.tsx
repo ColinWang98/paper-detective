@@ -15,8 +15,15 @@ import {
 } from '@dnd-kit/core';
 import { FolderOpen, Plus, Lightbulb, Sparkles, GripVertical } from 'lucide-react';
 
+import { EvidenceSubmitModal } from '@/components/case/EvidenceSubmitModal';
 import { usePaperStore } from '@/lib/store';
-import type { Highlight, HighlightColor, AIClueCard } from '@/types';
+import type {
+  AIClueCard,
+  EvidenceSubmission,
+  Highlight,
+  HighlightColor,
+  InvestigationTask,
+} from '@/types';
 
 import AIClueCardGenerator from './AIClueCardGenerator';
 import AIClueCardList from './AIClueCardList';
@@ -24,11 +31,27 @@ import Modal from './Modal';
 
 interface DetectiveNotebookProps {
   pdfFile?: File | null;
+  pendingEvidenceHighlight?: Highlight | null;
+  onCloseEvidenceModal?: () => void;
 }
 
-export default function DetectiveNotebook({ pdfFile = null }: DetectiveNotebookProps) {
+export default function DetectiveNotebook({
+  pdfFile = null,
+  pendingEvidenceHighlight = null,
+  onCloseEvidenceModal,
+}: DetectiveNotebookProps) {
   // Zustand store
-  const { currentPaper, groups, loadGroups, moveHighlightToGroup, addGroup, reorderGroups } = usePaperStore();
+  const {
+    currentPaper,
+    groups,
+    loadGroups,
+    moveHighlightToGroup,
+    addGroup,
+    reorderGroups,
+    investigationTasks,
+    evidenceSubmissions,
+    submitEvidence,
+  } = usePaperStore();
 
   const [activeId, setActiveId] = useState<number | null>(null);
   const [_activeType, _setActiveType] = useState<'highlight' | 'group' | null>(null);
@@ -123,11 +146,27 @@ export default function DetectiveNotebook({ pdfFile = null }: DetectiveNotebookP
         <NotebookContent
           activeId={activeId}
           activeTab={activeTab}
+          evidenceSubmissions={evidenceSubmissions}
+          investigationTasks={investigationTasks}
           pdfFile={pdfFile}
           setActiveTab={setActiveTab}
           onOpenCreateGroupModal={() => setIsCreateGroupModalOpen(true)}
         />
       </DndContext>
+
+      <EvidenceSubmitModal
+        highlight={pendingEvidenceHighlight}
+        tasks={investigationTasks}
+        isOpen={pendingEvidenceHighlight !== null}
+        onClose={() => onCloseEvidenceModal?.()}
+        onSubmit={async (taskId, evidenceType, note) => {
+          if (!pendingEvidenceHighlight?.id) {
+            return;
+          }
+
+          await submitEvidence(taskId, pendingEvidenceHighlight.id, evidenceType, note);
+        }}
+      />
 
       {/* Create Group Modal */}
       <Modal
@@ -169,12 +208,22 @@ export default function DetectiveNotebook({ pdfFile = null }: DetectiveNotebookP
 interface NotebookContentProps {
   activeId: number | null;
   activeTab: 'evidence' | 'ai';
+  evidenceSubmissions: EvidenceSubmission[];
+  investigationTasks: InvestigationTask[];
   pdfFile: File | null;
   setActiveTab: (tab: 'evidence' | 'ai') => void;
   onOpenCreateGroupModal: () => void;
 }
 
-function NotebookContent({ activeId, activeTab, pdfFile, setActiveTab, onOpenCreateGroupModal }: NotebookContentProps) {
+function NotebookContent({
+  activeId,
+  activeTab,
+  evidenceSubmissions,
+  investigationTasks,
+  pdfFile,
+  setActiveTab,
+  onOpenCreateGroupModal,
+}: NotebookContentProps) {
   const { currentPaper, groups, aiClueCards, deleteAIClueCard, updateAIClueCard } = usePaperStore();
 
   // Handle card edit
@@ -259,6 +308,31 @@ function NotebookContent({ activeId, activeTab, pdfFile, setActiveTab, onOpenCre
       <div className="flex-1 overflow-auto bg-newspaper-cream">
         {activeTab === 'evidence' ? (
           <div className="p-4">
+            <div className="mb-4 rounded-lg border border-newspaper-border bg-white p-4">
+              <h3 className="text-sm font-semibold text-newspaper-ink">Task Evidence</h3>
+              <div className="mt-3 space-y-3">
+                {investigationTasks.map((task) => {
+                  const taskEvidence = evidenceSubmissions.filter(
+                    (submission: EvidenceSubmission) => submission.taskId === task.id
+                  );
+                  return (
+                    <div key={task.id} className="rounded border border-newspaper-border p-3">
+                      <p className="text-sm font-medium text-newspaper-ink">{task.title}</p>
+                      {taskEvidence.length === 0 ? (
+                        <p className="mt-1 text-xs text-newspaper-faxed">No evidence submitted yet.</p>
+                      ) : (
+                        taskEvidence.map((submission: EvidenceSubmission) => (
+                          <p key={submission.id ?? `${submission.taskId}-${submission.highlightId}`} className="mt-1 text-xs text-newspaper-faded">
+                            {submission.evidenceType}: {submission.note}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Inbox (Collection Bin) - HCI: Always at top for "collect first, organize later" workflow */}
             {inboxGroup && (
               <GroupFolder key={inboxGroup.id} group={inboxGroup} activeId={activeId} isInbox />

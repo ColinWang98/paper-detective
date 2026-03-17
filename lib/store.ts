@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type {
   AIClueCard,
   CaseSetup,
+  EvidenceType,
   EvidenceSubmission,
   Group,
   Highlight,
@@ -90,6 +91,7 @@ interface PaperState {
   // Case investigation actions
   loadCaseSetup: (paperId: number) => Promise<void>;
   loadEvidenceSubmissions: (paperId: number) => Promise<void>;
+  submitEvidence: (taskId: string, highlightId: number, evidenceType: EvidenceType, note: string) => Promise<number>;
   setActiveTask: (taskId: string | null) => void;
   setInvestigationPhase: (phase: 'setup' | 'investigate' | 'report') => void;
 
@@ -655,6 +657,48 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       set({ evidenceSubmissions, isLoading: false });
     } catch (error) {
       set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
+  submitEvidence: async (taskId, highlightId, evidenceType, note) => {
+    const { currentPaper } = get();
+    if (!currentPaper?.id) {
+      throw new Error('No active paper selected');
+    }
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const createdAt = new Date().toISOString();
+      const id = await dbHelpers.addEvidenceSubmission({
+        paperId: currentPaper.id,
+        taskId,
+        highlightId,
+        evidenceType,
+        note,
+        createdAt,
+      });
+
+      set((state) => ({
+        evidenceSubmissions: [
+          ...state.evidenceSubmissions,
+          {
+            id,
+            paperId: currentPaper.id!,
+            taskId,
+            highlightId,
+            evidenceType,
+            note,
+            createdAt,
+          },
+        ],
+        isLoading: false,
+      }));
+
+      return id;
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
     }
   },
 

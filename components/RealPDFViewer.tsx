@@ -29,9 +29,10 @@ if (typeof window !== 'undefined') {
 interface RealPDFViewerProps {
   _onHighlightAdd?: (highlight: any) => void;
   onPdfFileChange?: (file: File | null) => void;
+  onEvidenceRequest?: (highlight: Highlight) => void;
 }
 
-export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange }: RealPDFViewerProps) {
+export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvidenceRequest }: RealPDFViewerProps) {
   // Zustand store
   const { currentPaper, addHighlight, highlights, selectedPriority, setSelectedPriority } = usePaperStore();
 
@@ -205,7 +206,10 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange }: Real
           createdAt: new Date().toISOString(),
         };
 
-        await addHighlight(highlightData);
+        const highlightId = await addHighlight(highlightData);
+        const createdHighlight = { ...highlightData, id: highlightId } as Highlight;
+        _onHighlightAdd?.(createdHighlight);
+        onEvidenceRequest?.(createdHighlight);
       } else {
         // Fallback to container-relative coordinates
         const relativeX = (selectionRange.rect.x / containerWidth) * 100;
@@ -229,7 +233,10 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange }: Real
           createdAt: new Date().toISOString(),
         };
 
-        await addHighlight(highlightData);
+        const highlightId = await addHighlight(highlightData);
+        const createdHighlight = { ...highlightData, id: highlightId } as Highlight;
+        _onHighlightAdd?.(createdHighlight);
+        onEvidenceRequest?.(createdHighlight);
       }
 
       // Clear selection
