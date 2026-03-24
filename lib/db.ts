@@ -5,6 +5,8 @@ import type {
   AIAnalysis,
   AIClueCard,
   CaseSetup,
+  DeductionGraph,
+  EvidenceRelationship,
   EvidenceSubmission,
   Group,
   GroupHighlight,
@@ -23,6 +25,8 @@ export class PaperDetectiveDB extends Dexie {
   intelligenceBriefs!: Table<IntelligenceBrief>;
   caseSetups!: Table<CaseSetup>;
   evidenceSubmissions!: Table<EvidenceSubmission>;
+  evidenceRelationships!: Table<EvidenceRelationship>;
+  deductionGraphs!: Table<DeductionGraph>;
 
   constructor() {
     super('PaperDetectiveDB');
@@ -59,6 +63,22 @@ export class PaperDetectiveDB extends Dexie {
     this.version(4).stores({
       caseSetups: '++id, paperId, generatedAt, model, source',
       evidenceSubmissions: '++id, paperId, taskId, highlightId, evidenceType, createdAt',
+    });
+
+    // Version 5: Add missing compound index for groups inbox lookup
+    this.version(5).stores({
+      groups: '++id, paperId, name, type, [paperId+type], position, isSystem',
+    });
+
+    // Version 6: Add evidence relationship graph persistence
+    this.version(6).stores({
+      evidenceRelationships:
+        '++id, paperId, taskId, fromSubmissionId, toSubmissionId, relationshipType, createdAt',
+    });
+
+    // Version 7: Persist React Flow graph nodes + edges by task
+    this.version(7).stores({
+      deductionGraphs: '++id, paperId, taskId, [paperId+taskId], updatedAt',
     });
   }
 }
@@ -151,6 +171,8 @@ export const dbHelpers = {
         db.intelligenceBriefs,
         db.caseSetups,
         db.evidenceSubmissions,
+        db.evidenceRelationships,
+        db.deductionGraphs,
       ],
       async () => {
       // Delete all highlights for this paper
@@ -187,6 +209,14 @@ export const dbHelpers = {
       // Delete evidence submissions
       const evidenceSubmissions = await db.evidenceSubmissions.where('paperId').equals(id).toArray();
       await db.evidenceSubmissions.bulkDelete(evidenceSubmissions.map(submission => submission.id!));
+
+      // Delete evidence relationships
+      const evidenceRelationships = await db.evidenceRelationships.where('paperId').equals(id).toArray();
+      await db.evidenceRelationships.bulkDelete(evidenceRelationships.map((relationship) => relationship.id!));
+
+      // Delete deduction graphs
+      const deductionGraphs = await db.deductionGraphs.where('paperId').equals(id).toArray();
+      await db.deductionGraphs.bulkDelete(deductionGraphs.map((graph) => graph.id!));
 
       // Finally delete the paper
       await db.papers.delete(id);
@@ -416,12 +446,66 @@ export const dbHelpers = {
       .sortBy('createdAt');
   },
 
+  async updateEvidenceSubmission(id: number, changes: Partial<EvidenceSubmission>): Promise<number> {
+    return await db.evidenceSubmissions.update(id, changes);
+  },
+
   async deleteEvidenceSubmission(id: number): Promise<void> {
     await db.evidenceSubmissions.delete(id);
   },
 
   async deleteEvidenceSubmissionsByPaper(paperId: number): Promise<void> {
     await db.evidenceSubmissions.where('paperId').equals(paperId).delete();
+  },
+
+  // Evidence relationship operations
+  async addEvidenceRelationship(
+    relationship: Omit<EvidenceRelationship, 'id'> | EvidenceRelationship
+  ): Promise<number> {
+    return await db.evidenceRelationships.add(relationship as EvidenceRelationship);
+  },
+
+  async getEvidenceRelationships(paperId: number): Promise<EvidenceRelationship[]> {
+    return await db.evidenceRelationships.where('paperId').equals(paperId).sortBy('createdAt');
+  },
+
+  async deleteEvidenceRelationship(id: number): Promise<void> {
+    await db.evidenceRelationships.delete(id);
+  },
+
+  async deleteEvidenceRelationshipsByPaper(paperId: number): Promise<void> {
+    await db.evidenceRelationships.where('paperId').equals(paperId).delete();
+  },
+
+  async saveDeductionGraph(graph: DeductionGraph): Promise<number> {
+    const existing = await db.deductionGraphs.where('[paperId+taskId]').equals([graph.paperId, graph.taskId]).first();
+    const payload = {
+      ...graph,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existing?.id) {
+      await db.deductionGraphs.update(existing.id, payload);
+      return existing.id;
+    }
+
+    return await db.deductionGraphs.add(payload);
+  },
+
+  async getDeductionGraphs(paperId: number): Promise<DeductionGraph[]> {
+    return await db.deductionGraphs.where('paperId').equals(paperId).toArray();
+  },
+
+  async getDeductionGraph(paperId: number, taskId: string): Promise<DeductionGraph | undefined> {
+    return await db.deductionGraphs.where('[paperId+taskId]').equals([paperId, taskId]).first();
+  },
+
+  async deleteDeductionGraph(id: number): Promise<void> {
+    await db.deductionGraphs.delete(id);
+  },
+
+  async deleteDeductionGraphsByPaper(paperId: number): Promise<void> {
+    await db.deductionGraphs.where('paperId').equals(paperId).delete();
   },
 
   // Reorder highlights within a group

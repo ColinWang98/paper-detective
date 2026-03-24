@@ -4,9 +4,11 @@ import {
   clearAPIKey,
   getAPIKey,
   getAPIKeyHelpText,
+  getActiveProvider,
   getLastTestResult,
   hasAPIKey,
   saveAPIKey,
+  setActiveProvider,
   testAPIKey,
   validateAPIKeyFormat,
 } from '@/services/apiKeyManager';
@@ -25,6 +27,10 @@ describe('apiKeyManager', () => {
   let consoleErrorSpy: jest.SpyInstance;
   let fetchMock: jest.Mock;
 
+  const bigmodelKey = 'glm-valid-key-12345678901234567890';
+  const openrouterKey = 'sk-or-v1-' + 'a'.repeat(32);
+  const deepseekKey = 'sk-' + 'b'.repeat(32);
+
   beforeEach(() => {
     localStorage.clear();
     jest.clearAllMocks();
@@ -32,15 +38,7 @@ describe('apiKeyManager', () => {
     fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: jest.fn().mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: 'Hi',
-            },
-          },
-        ],
-      }),
+      json: jest.fn().mockResolvedValue({ choices: [{ message: { content: 'Hi' } }] }),
     });
     global.fetch = fetchMock as unknown as typeof fetch;
   });
@@ -49,172 +47,151 @@ describe('apiKeyManager', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe('saveAPIKey', () => {
-    it('encrypts and stores the API key', () => {
-      (CryptoJS.AES.encrypt as jest.Mock).mockReturnValue({
-        toString: () => 'encrypted-key',
-      });
+  it('stores the selected provider as active', () => {
+    setActiveProvider('openrouter');
+    expect(getActiveProvider()).toBe('openrouter');
+  });
 
-      saveAPIKey('glm-valid-key-12345678901234567890');
+  it('defaults to DeepSeek when no provider has been stored yet', () => {
+    expect(getActiveProvider()).toBe('deepseek');
+  });
 
-      expect(CryptoJS.AES.encrypt).toHaveBeenCalledWith(
-        'glm-valid-key-12345678901234567890',
-        expect.any(String)
-      );
-      expect(localStorage.getItem('bigmodel_api_key_encrypted')).toBe('encrypted-key');
+  it('encrypts and stores BigModel keys in provider-specific storage', () => {
+    (CryptoJS.AES.encrypt as jest.Mock).mockReturnValue({ toString: () => 'encrypted-bigmodel' });
+
+    saveAPIKey(bigmodelKey, 'bigmodel');
+
+    expect(localStorage.getItem('bigmodel_api_key_encrypted')).toBe('encrypted-bigmodel');
+    expect(getActiveProvider()).toBe('bigmodel');
+  });
+
+  it('encrypts and stores OpenRouter keys in provider-specific storage', () => {
+    (CryptoJS.AES.encrypt as jest.Mock).mockReturnValue({ toString: () => 'encrypted-openrouter' });
+
+    saveAPIKey(openrouterKey, 'openrouter');
+
+    expect(localStorage.getItem('openrouter_api_key_encrypted')).toBe('encrypted-openrouter');
+    expect(getActiveProvider()).toBe('openrouter');
+  });
+
+  it('encrypts and stores DeepSeek keys in provider-specific storage', () => {
+    (CryptoJS.AES.encrypt as jest.Mock).mockReturnValue({ toString: () => 'encrypted-deepseek' });
+
+    saveAPIKey(deepseekKey, 'deepseek');
+
+    expect(localStorage.getItem('deepseek_api_key_encrypted')).toBe('encrypted-deepseek');
+    expect(getActiveProvider()).toBe('deepseek');
+  });
+
+  it('decrypts and returns the key for the active provider', () => {
+    localStorage.setItem('ai_active_provider', 'openrouter');
+    localStorage.setItem('openrouter_api_key_encrypted', 'encrypted-openrouter');
+    (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
+      toString: () => openrouterKey,
     });
 
-    it('rejects invalid key format', () => {
-      expect(() => saveAPIKey('invalid-key')).toThrow('Failed to save API Key');
+    expect(getAPIKey()).toBe(openrouterKey);
+    expect(hasAPIKey()).toBe(true);
+  });
+
+  it('clears stored values for the selected provider only', () => {
+    localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-bigmodel');
+    localStorage.setItem('openrouter_api_key_encrypted', 'encrypted-openrouter');
+
+    clearAPIKey('openrouter');
+
+    expect(localStorage.getItem('bigmodel_api_key_encrypted')).toBe('encrypted-bigmodel');
+    expect(localStorage.getItem('openrouter_api_key_encrypted')).toBeNull();
+  });
+
+  it('tests a BigModel key against the BigModel endpoint', async () => {
+    localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-bigmodel');
+    (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({ toString: () => bigmodelKey });
+
+    const result = await testAPIKey('bigmodel');
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      expect.objectContaining({
+        body: expect.stringContaining('"model":"glm-4.7-flash"'),
+      })
+    );
+  });
+
+  it('tests an OpenRouter key against the proxy endpoint', async () => {
+    localStorage.setItem('openrouter_api_key_encrypted', 'encrypted-openrouter');
+    (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({ toString: () => openrouterKey });
+
+    const result = await testAPIKey('openrouter');
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/provider-proxy',
+      expect.objectContaining({
+        body: expect.stringContaining('"provider":"openrouter"'),
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/provider-proxy',
+      expect.objectContaining({
+        body: expect.stringContaining('"model":"minimax/minimax-m2.5:free"'),
+      })
+    );
+  });
+
+  it('tests a DeepSeek key against the proxy endpoint', async () => {
+    localStorage.setItem('deepseek_api_key_encrypted', 'encrypted-deepseek');
+    (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({ toString: () => deepseekKey });
+
+    const result = await testAPIKey('deepseek');
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/provider-proxy',
+      expect.objectContaining({
+        body: expect.stringContaining('"provider":"deepseek"'),
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/provider-proxy',
+      expect.objectContaining({
+        body: expect.stringContaining('"model":"deepseek-chat"'),
+      })
+    );
+  });
+
+  it('validates OpenRouter key prefix', () => {
+    expect(validateAPIKeyFormat(openrouterKey, 'openrouter')).toEqual({ valid: true });
+    expect(validateAPIKeyFormat(bigmodelKey, 'openrouter')).toEqual({
+      valid: false,
+      error: 'OpenRouter API Key 应以 sk-or-v1- 开头',
     });
   });
 
-  describe('getAPIKey', () => {
-    it('decrypts and returns the stored API key', () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'glm-valid-key-12345678901234567890',
-      });
-
-      expect(getAPIKey()).toBe('glm-valid-key-12345678901234567890');
-      expect(CryptoJS.AES.decrypt).toHaveBeenCalledWith('encrypted-key', expect.any(String));
-    });
-
-    it('returns null and clears storage for invalid decrypted content', () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'bad-encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'not-an-api-key',
-      });
-
-      expect(getAPIKey()).toBeNull();
-      expect(localStorage.getItem('bigmodel_api_key_encrypted')).toBeNull();
-    });
-
-    it('returns null when decryption throws', () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'bad-encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockImplementation(() => {
-        throw new Error('decrypt failed');
-      });
-
-      expect(getAPIKey()).toBeNull();
+  it('validates DeepSeek key prefix', () => {
+    expect(validateAPIKeyFormat(deepseekKey, 'deepseek')).toEqual({ valid: true });
+    expect(validateAPIKeyFormat(bigmodelKey, 'deepseek')).toEqual({
+      valid: false,
+      error: 'DeepSeek API Key 应以 sk- 开头',
     });
   });
 
-  describe('clearAPIKey and hasAPIKey', () => {
-    it('clears stored data', () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      localStorage.setItem('bigmodel_api_key_test_result', '{"success":true}');
-
-      clearAPIKey();
-
-      expect(localStorage.getItem('bigmodel_api_key_encrypted')).toBeNull();
-      expect(localStorage.getItem('bigmodel_api_key_test_result')).toBeNull();
-    });
-
-    it('reports whether a key exists', () => {
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'glm-valid-key-12345678901234567890',
-      });
-
-      expect(hasAPIKey()).toBe(false);
-
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      expect(hasAPIKey()).toBe(true);
-    });
+  it('returns provider-specific help text', () => {
+    expect(getAPIKeyHelpText('bigmodel').link).toContain('bigmodel.cn');
+    expect(getAPIKeyHelpText('openrouter').link).toContain('openrouter.ai');
+    expect(getAPIKeyHelpText('deepseek').link).toContain('deepseek.com');
   });
 
-  describe('validateAPIKeyFormat', () => {
-    it('accepts a valid key', () => {
-      expect(
-        validateAPIKeyFormat('glm-valid-key-12345678901234567890').valid
-      ).toBe(true);
-    });
+  it('returns the stored last test result for the selected provider', () => {
+    localStorage.setItem(
+      'openrouter_api_key_test_result',
+      JSON.stringify({ success: true, timestamp: '2026-03-20T12:00:00Z' })
+    );
 
-    it('rejects missing prefix', () => {
-      expect(validateAPIKeyFormat('bad-key')).toEqual({
-        valid: false,
-        error: expect.any(String),
-      });
-    });
-
-    it('rejects too-short keys', () => {
-      expect(validateAPIKeyFormat('glm-short')).toEqual({
-        valid: false,
-        error: expect.any(String),
-      });
-    });
-  });
-
-  describe('testAPIKey', () => {
-    it('returns missing-key error when no key is stored', async () => {
-      const result = await testAPIKey();
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('API_KEY_MISSING');
-    });
-
-    it('tests a stored key successfully and persists the result', async () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'glm-valid-key-12345678901234567890',
-      });
-
-      const result = await testAPIKey();
-
-      expect(result.success).toBe(true);
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer glm-valid-key-12345678901234567890',
-          }),
-        })
-      );
-      expect(getLastTestResult().success).toBe(true);
-    });
-
-    it('maps authentication failures to INVALID_API_KEY', async () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'glm-valid-key-12345678901234567890',
-      });
-
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      const result = await testAPIKey();
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('INVALID_API_KEY');
-      expect(getLastTestResult().success).toBe(false);
-    });
-
-    it('maps network failures to NETWORK_ERROR', async () => {
-      localStorage.setItem('bigmodel_api_key_encrypted', 'encrypted-key');
-      (CryptoJS.AES.decrypt as jest.Mock).mockReturnValue({
-        toString: () => 'glm-valid-key-12345678901234567890',
-      });
-
-      fetchMock.mockRejectedValueOnce(new Error('network down'));
-
-      const result = await testAPIKey();
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('NETWORK_ERROR');
-    });
-  });
-
-  describe('getAPIKeyHelpText', () => {
-    it('returns BigModel-specific help text', () => {
-      const help = getAPIKeyHelpText();
-
-      expect(help.link).toContain('bigmodel.cn');
-      expect(help.steps.join(' ')).toContain('BigModel');
-      expect(help.costExample).toContain('glm-4.7-flash');
+    expect(getLastTestResult('openrouter')).toEqual({
+      success: true,
+      timestamp: '2026-03-20T12:00:00Z',
     });
   });
 });

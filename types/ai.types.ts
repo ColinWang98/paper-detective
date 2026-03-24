@@ -4,7 +4,12 @@ import type { Highlight } from './index';
 // Re-export Highlight for use in ai.types
 export type { Highlight } from './index';
 
-export type AIModel = 'glm-4.7-flash' | 'gpt-4o-mini';
+export type AIModel =
+  | 'glm-4.7-flash'
+  | 'glm-4.6'
+  | 'minimax/minimax-m2.5:free'
+  | 'deepseek-chat'
+  | 'gpt-4o-mini';
 
 export type AIErrorCode =
   | 'API_KEY_MISSING'
@@ -324,6 +329,8 @@ export interface GenerateClueCardsOptions {
   paperId: number;
   pdfText: string;
   highlights: Highlight[];
+  apiKey?: string;
+  model?: AIModel;
   cardTypes?: ClueCardType[];  // 指定生成哪些类型的卡片（默认全部4种）
   onProgress?: (stage: string, progress: number) => void;
   onCardGenerated?: (card: AIClueCard) => void;
@@ -454,6 +461,8 @@ export interface GenerateBriefOptions {
   paperId: number;
   pdfText: string;
   highlights: import('./index').Highlight[];
+  apiKey?: string;
+  model?: AIModel;
   forceRegenerate?: boolean;
   onProgress?: (stage: string, progress: number) => void;
 }

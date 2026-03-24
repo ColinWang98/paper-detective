@@ -34,7 +34,7 @@ export class AIClueCardService {
    * 从论文中生成4种类型的线索卡片
    */
   async generateClueCards(options: GenerateClueCardsOptions): Promise<ClueCardsGenerationResult> {
-    const { paperId, pdfText, highlights, cardTypes = ['question', 'method', 'finding', 'limitation'], onProgress, onCardGenerated } = options;
+    const { paperId, pdfText, highlights, apiKey, model, cardTypes = ['question', 'method', 'finding', 'limitation'], onProgress, onCardGenerated } = options;
 
     const startTime = performance.now();
     const generatedCards: AIClueCard[] = [];
@@ -49,7 +49,7 @@ export class AIClueCardService {
       }
 
       // 2. 验证API配置
-      if (!aiService.isConfigured()) {
+      if (!apiKey && !aiService.isConfigured()) {
         throw new Error('请先在设置中配置API Key');
       }
 
@@ -74,7 +74,7 @@ export class AIClueCardService {
 
       // 6. 调用Claude API生成卡片
       onProgress?.('AI生成线索卡片中...', 20);
-      const cards = await this.callClaudeForCards(prompt, paperId, onProgress);
+      const cards = await this.callClaudeForCards(prompt, paperId, apiKey, model, onProgress);
 
       onProgress?.('保存线索卡片...', 90);
 
@@ -195,6 +195,8 @@ ${typesToGenerate}
   private async callClaudeForCards(
     prompt: string,
     paperId: number,
+    apiKey?: string,
+    model?: string,
     onProgress?: (stage: string, progress: number) => void
   ): Promise<Omit<AIClueCard, 'id'>[]> {
     try {
@@ -204,6 +206,8 @@ ${typesToGenerate}
       fullText = await aiService.generateText({
         prompt,
         maxTokens: 3000,
+        apiKey,
+        model,
         onProgress: (chunk) => {
           fullText += chunk;
           const progress = Math.min(90, 30 + Math.floor(fullText.length / 50));

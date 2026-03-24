@@ -2,19 +2,19 @@
 
 import React, { useMemo } from 'react';
 
+import { getHighlightPriorityLabel } from '@/lib/highlightPriority';
 import type { Highlight, HighlightColor } from '@/types';
 
 interface HighlightOverlayProps {
   highlights: Highlight[];
   currentPage: number;
-  scale: number;
 }
 
 const colorClasses: Record<HighlightColor, string> = {
-  red: 'bg-red-500/30 border-red-500',
-  yellow: 'bg-yellow-500/30 border-yellow-500',
-  orange: 'bg-orange-500/30 border-orange-500',
-  gray: 'bg-gray-500/30 border-gray-400',
+  red: 'bg-red-400/28',
+  yellow: 'bg-yellow-300/45',
+  orange: 'bg-orange-300/38',
+  gray: 'bg-gray-300/32',
 };
 
 const priorityLabels: Record<HighlightColor, string> = {
@@ -24,7 +24,7 @@ const priorityLabels: Record<HighlightColor, string> = {
   gray: '⚪',
 };
 
-export function HighlightOverlay({ highlights, currentPage, scale: _scale }: HighlightOverlayProps) {
+export function HighlightOverlay({ highlights, currentPage }: HighlightOverlayProps) {
   // Filter highlights for current page
   const currentPageHighlights = useMemo(
     () => highlights.filter(h => h.pageNumber === currentPage),
@@ -34,21 +34,32 @@ export function HighlightOverlay({ highlights, currentPage, scale: _scale }: Hig
   return (
     <div className="pointer-events-none absolute inset-0">
       {currentPageHighlights.map((highlight) => {
-        // Skip if no position data
-        if (!highlight.position) {return null;}
+        const highlightRects =
+          highlight.rects && highlight.rects.length > 0
+            ? highlight.rects
+            : highlight.position
+              ? [highlight.position]
+              : [];
+
+        if (highlightRects.length === 0) {return null;}
 
         return (
-          <div
-            key={highlight.id}
-            className={`absolute border-2 rounded ${colorClasses[highlight.color]} pointer-events-none transition-opacity duration-200`}
-            style={{
-              left: `${highlight.position.x}%`,
-              top: `${highlight.position.y}%`,
-              width: `${highlight.position.width}%`,
-              height: `${highlight.position.height}%`,
-            }}
-            title={`${priorityLabels[highlight.color]} ${highlight.text?.slice(0, 50)}...`}
-          />
+          <React.Fragment key={highlight.id}>
+            {highlightRects.map((rect, index) => (
+              <div
+                key={`${highlight.id}-${index}`}
+                className={`absolute rounded-[3px] ${colorClasses[highlight.color]} pointer-events-none transition-opacity duration-200 mix-blend-multiply shadow-[0_0_0_1px_rgba(255,255,255,0.12)]`}
+                style={{
+                  left: `${rect.x}%`,
+                  top: `${rect.y}%`,
+                  width: `${rect.width}%`,
+                  height: `${Math.max(rect.height, 1.6)}%`,
+                  filter: 'saturate(1.05)',
+                }}
+                title={`${getHighlightPriorityLabel(highlight)} ${highlight.text?.slice(0, 50)}...`}
+              />
+            ))}
+          </React.Fragment>
         );
       })}
     </div>
@@ -60,7 +71,7 @@ export function HighlightTooltip({ highlight }: { highlight: Highlight }) {
   return (
     <div className="absolute z-50 bg-white border border-gray-300 rounded-lg shadow-xl p-3 max-w-md">
       <div className="flex items-start gap-2">
-        <span className="text-sm">{priorityLabels[highlight.color]}</span>
+        <span className="text-sm font-semibold text-gray-700">{getHighlightPriorityLabel(highlight)}</span>
         <div>
           <p className="text-sm text-gray-800">{highlight.text}</p>
           {highlight.pageNumber && (

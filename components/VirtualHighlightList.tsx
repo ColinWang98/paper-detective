@@ -13,6 +13,7 @@ import React, {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
+import { getHighlightPriorityLabel, getHighlightPriorityOrder } from '@/lib/highlightPriority';
 import type { Highlight, HighlightColor } from '@/types';
 
 // ============================================================================
@@ -189,7 +190,7 @@ function sortHighlightsByPriority(highlights: Highlight[]): Highlight[] {
   };
 
   return [...highlights].sort((a, b) => {
-    const priorityDiff = priorityOrder[a.color] - priorityOrder[b.color];
+    const priorityDiff = getHighlightPriorityOrder(a) - getHighlightPriorityOrder(b);
     if (priorityDiff !== 0) return priorityDiff;
     
     // 相同优先级按时间倒序
@@ -534,7 +535,7 @@ export function HighlightCardItem({
       {/* 优先级标签 */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xs font-medium text-newspaper-ink">
-          {priorityLabels[highlight.color]}
+          {getHighlightPriorityLabel(highlight)}
         </span>
         {highlight.pageNumber && (
           <span className="text-xs text-newspaper-faxed bg-white/50 px-2 py-0.5 rounded-full">

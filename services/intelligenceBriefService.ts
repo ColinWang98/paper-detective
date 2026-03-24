@@ -8,6 +8,7 @@ import type {
   EvidenceSubmission,
   TokenUsage,
   ClueCardType,
+  AIModel,
  Highlight } from '@/types';
 
 import { aiService } from './aiService';
@@ -89,6 +90,8 @@ export interface GenerateBriefOptions {
   paperId: number;
   pdfText: string;
   highlights: Highlight[];
+  apiKey?: string;
+  model?: AIModel;
   forceRegenerate?: boolean;  // Skip cache
   onProgress?: (stage: string, progress: number) => void;
 }
@@ -115,7 +118,7 @@ export class IntelligenceBriefService {
    */
   async generateBrief(options: GenerateBriefOptions): Promise<BriefGenerationResult> {
     const startTime = performance.now();
-    const { paperId, pdfText, highlights, forceRegenerate, onProgress } = options;
+    const { paperId, pdfText, highlights, apiKey, model, forceRegenerate, onProgress } = options;
 
     try {
       const caseSetup = await dbHelpers.getCaseSetup(paperId);
@@ -131,7 +134,7 @@ export class IntelligenceBriefService {
       }
 
       // 2. Validate API configuration
-      if (!aiService.isConfigured()) {
+      if (!apiKey) {
         throw new Error('请先在设置中配置API Key');
       }
 
@@ -148,9 +151,9 @@ export class IntelligenceBriefService {
         structuredInfoResult,
         clueCardsResult,
       ] = await Promise.allSettled([
-        this.generateClipSummary(paperId, truncatedText, onProgress),
-        this.generateStructuredInfo(paperId, truncatedText, onProgress),
-        this.generateClueCards(paperId, truncatedText, topHighlights, onProgress),
+        this.generateClipSummary(paperId, truncatedText, apiKey, model, onProgress),
+        this.generateStructuredInfo(paperId, truncatedText, apiKey, model, onProgress),
+        this.generateClueCards(paperId, truncatedText, topHighlights, apiKey, model, onProgress),
       ]);
 
       // 5. Extract results or throw errors
@@ -211,7 +214,7 @@ export class IntelligenceBriefService {
         cost,
         duration: performance.now() - startTime,
         generatedAt: new Date().toISOString(),
-        model: 'glm-4.7-flash' as const,
+        model: model || 'glm-4.7-flash',
         completeness: {
           clipSummary: clipSummaryResult.status === 'fulfilled',
           structuredInfo: structuredInfoResult.status === 'fulfilled',
@@ -227,7 +230,7 @@ export class IntelligenceBriefService {
       onProgress?.('完成', 100);
 
       // 12. Track cost
-      trackCost('glm-4.7-flash', tokenUsage, brief.paperId);
+      trackCost(brief.model, tokenUsage, brief.paperId);
 
       return { brief, stage: 'success' };
 
@@ -321,6 +324,8 @@ export class IntelligenceBriefService {
   private async generateClipSummary(
     paperId: number,
     pdfText: string,
+    apiKey: string,
+    model: AIModel | undefined,
     onProgress?: (stage: string, progress: number) => void
   ): Promise<string> {
     onProgress?.('生成Clip摘要', 20);
@@ -350,6 +355,8 @@ ${pdfText}
         paperId,
         pdfText,
         highlights: [],
+        apiKey,
+        model,
       });
 
       // Cache for 24 hours
@@ -368,6 +375,8 @@ ${pdfText}
   private async generateStructuredInfo(
     paperId: number,
     pdfText: string,
+    apiKey: string,
+    model: AIModel | undefined,
     onProgress?: (stage: string, progress: number) => void
   ): Promise<StructuredInfo> {
     onProgress?.('提取结构化信息', 40);
@@ -409,6 +418,8 @@ ${pdfText}
         paperId,
         pdfText,
         highlights: [],
+        apiKey,
+        model,
       });
 
       const structuredInfo: StructuredInfo = {
@@ -441,6 +452,8 @@ ${pdfText}
     paperId: number,
     pdfText: string,
     highlights: Highlight[],
+    apiKey: string,
+    model: AIModel | undefined,
     onProgress?: (stage: string, progress: number) => void
   ): Promise<AIClueCard[]> {
     onProgress?.('生成侦探卡片', 60);
@@ -453,6 +466,8 @@ ${pdfText}
         paperId,
         pdfText,
         highlights,
+        apiKey,
+        model,
         onProgress: (stage, progress) => {
           const adjustedProgress = 60 + (progress * 0.3); // Map to 60-90%
           onProgress?.(stage, adjustedProgress);

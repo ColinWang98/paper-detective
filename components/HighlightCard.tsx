@@ -5,6 +5,7 @@ import React, { memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { motion } from 'framer-motion';
 
+import { getHighlightPriority } from '@/lib/highlightPriority';
 import type { Highlight, HighlightColor } from '@/types';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -34,6 +35,7 @@ function HighlightCardComponent({ highlight, isDragging: isDraggingProp = false,
   });
 
   const dragging = isDragging || isDraggingProp;
+  const priority = getHighlightPriority(highlight);
 
   // Apply drag transform
   const style = transform
@@ -77,7 +79,7 @@ function HighlightCardComponent({ highlight, isDragging: isDraggingProp = false,
       {/* Priority Badge */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xs font-medium text-[var(--text-primary)]">
-          {t(`highlight.priority.labels.${highlight.color}`)}
+          {t(`highlight.priority.labels.${priority}`)}
         </span>
         {highlight.pageNumber && (
           <span className="text-xs text-[var(--text-muted)] bg-[var(--bg-secondary)] px-2 py-0.5 rounded-full">

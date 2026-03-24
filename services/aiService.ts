@@ -1,8 +1,8 @@
 import type { Highlight } from '@/types';
 import type { AIAnalysis, AIErrorCode } from '@/types/ai.types';
 
-import { getAPIKey, hasAPIKey } from './apiKeyManager';
-import { BIGMODEL_API_URL, DEFAULT_AI_MODEL } from './aiProvider';
+import { getAPIKey, getActiveProviderConfig, getProviderForApiKey, hasAPIKey } from './apiKeyManager';
+import { DEFAULT_AI_MODEL, getProviderConfig } from './aiProvider';
 import { cacheService } from './cacheService';
 import { estimateTokens, calculateCost } from './costTracker';
 
@@ -22,11 +22,15 @@ interface ChatCompletionOptions {
   maxTokens: number;
   onProgress?: (chunk: string) => void;
   stream?: boolean;
+  apiKey?: string;
+  model?: string;
 }
 
 interface StructuredDataOptions {
   prompt: string;
   maxTokens: number;
+  apiKey?: string;
+  model?: string;
 }
 
 class AIError extends Error {
@@ -143,49 +147,238 @@ export class AIService {
   }
 
   async generateStructuredData<T>(options: StructuredDataOptions): Promise<T> {
-    const response = await this.requestChatCompletion({
-      prompt: options.prompt,
+    try {
+      const response = await this.requestChatCompletion({
+        prompt: options.prompt,
+        maxTokens: options.maxTokens,
+        stream: false,
+        apiKey: options.apiKey,
+        model: options.model,
+      });
+      const rawJson = this.extractJsonObject(response);
+
+      if (!rawJson) {
+        return await this.recoverStructuredData<T>(response, options);
+      }
+
+      return JSON.parse(rawJson) as T;
+    } catch (error: unknown) {
+      if (error instanceof SyntaxError) {
+        throw new AIError('PARSE_ERROR', 'Structured AI response did not contain valid JSON');
+      }
+      if (error instanceof AIError) {
+        throw error;
+      }
+
+      throw this.handleAIError(error);
+    }
+  }
+
+  private async recoverStructuredData<T>(
+    originalResponse: string,
+    options: StructuredDataOptions
+  ): Promise<T> {
+    try {
+      return await this.repairStructuredData<T>(originalResponse, options);
+    } catch (error: unknown) {
+      const candidate = error as Error & { code?: string };
+      if (candidate.code !== 'PARSE_ERROR') {
+        throw error;
+      }
+    }
+
+    const strictRetryPrompt = [
+      'Your previous reply was not valid JSON.',
+      'Retry the original task and return exactly one strict JSON object.',
+      'Do not use markdown fences.',
+      'Do not add any explanation before or after the JSON.',
+      'Use only double-quoted JSON keys and values where applicable.',
+      'Original task:',
+      options.prompt,
+    ].join('\n\n');
+
+    const strictRetryResponse = await this.requestChatCompletion({
+      prompt: strictRetryPrompt,
       maxTokens: options.maxTokens,
       stream: false,
+      apiKey: options.apiKey,
+      model: options.model,
     });
 
-    const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || response.match(/\{[\s\S]*\}/);
-    const rawJson = jsonMatch?.[1] ?? jsonMatch?.[0];
-
-    if (!rawJson) {
+    const strictRetryJson = this.extractJsonObject(strictRetryResponse);
+    if (!strictRetryJson) {
       throw new AIError('PARSE_ERROR', 'Structured AI response did not contain valid JSON');
     }
 
-    return JSON.parse(rawJson) as T;
+    return JSON.parse(strictRetryJson) as T;
+  }
+
+  private async repairStructuredData<T>(
+    originalResponse: string,
+    options: StructuredDataOptions
+  ): Promise<T> {
+    const repairPrompt = [
+      'Convert the following model output into one strict JSON object.',
+      'Return JSON only.',
+      'Do not use markdown fences.',
+      'Do not add commentary.',
+      'Preserve the original meaning and fields when possible.',
+      'If some values are uncertain, keep them concise instead of inventing new facts.',
+      'Model output to repair:',
+      originalResponse,
+    ].join('\n\n');
+
+    const repairedResponse = await this.requestChatCompletion({
+      prompt: repairPrompt,
+      maxTokens: Math.min(options.maxTokens, 1200),
+      stream: false,
+      apiKey: options.apiKey,
+      model: options.model,
+    });
+    const repairedJson = this.extractJsonObject(repairedResponse);
+
+    if (!repairedJson) {
+      throw new AIError('PARSE_ERROR', 'Structured AI response did not contain valid JSON');
+    }
+
+    return JSON.parse(repairedJson) as T;
+  }
+
+  private extractJsonObject(response: string): string | null {
+    const trimmed = response.trim();
+    const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const candidates = [
+      fencedMatch?.[1],
+      this.findBalancedJsonObject(trimmed),
+      trimmed,
+    ].filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizeJsonCandidate(candidate);
+
+      try {
+        JSON.parse(normalized);
+        return normalized;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private normalizeJsonCandidate(candidate: string): string {
+    return candidate
+      .trim()
+      .replace(/^\uFEFF/, '')
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .replace(/,\s*([}\]])/g, '$1');
+  }
+
+  private findBalancedJsonObject(input: string): string | null {
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < input.length; index += 1) {
+      const character = input[index];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) {
+        continue;
+      }
+
+      if (character === '{') {
+        if (depth === 0) {
+          start = index;
+        }
+        depth += 1;
+      } else if (character === '}') {
+        if (depth > 0) {
+          depth -= 1;
+          if (depth === 0 && start >= 0) {
+            return input.slice(start, index + 1);
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   private async requestChatCompletion(options: ChatCompletionOptions): Promise<string> {
     const { prompt, maxTokens, onProgress, stream = Boolean(onProgress) } = options;
-    const apiKey = getAPIKey();
+    const apiKey = options.apiKey ?? getAPIKey();
+    const provider = apiKey ? getProviderForApiKey(apiKey) : 'bigmodel';
+    const providerConfig = getProviderConfig(provider);
+    const activeProviderConfig = typeof window !== 'undefined' ? getActiveProviderConfig() : null;
+    const requestModel =
+      options.model ??
+      (activeProviderConfig?.id === provider ? activeProviderConfig.model : null) ??
+      providerConfig.model;
 
     if (!apiKey) {
       throw new AIError('API_KEY_MISSING', '请先在设置中配置API Key');
     }
 
-    const response = await fetch(BIGMODEL_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: DEFAULT_AI_MODEL,
-        max_tokens: maxTokens,
-        temperature: 0.2,
-        stream,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
+    let response: Response;
+    const requestBody = {
+      model: requestModel,
+      max_tokens: maxTokens,
+      temperature: 0.2,
+      stream,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    };
+
+    try {
+      if ((provider === 'openrouter' || provider === 'deepseek') && typeof window !== 'undefined') {
+        response = await fetch('/api/ai/provider-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-        ],
-      }),
-    });
+          body: JSON.stringify({
+            provider,
+            apiKey,
+            ...requestBody,
+          }),
+        });
+      } else {
+        response = await fetch(providerConfig.apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+      }
+    } catch (error: unknown) {
+      const networkError = new Error(error instanceof Error ? error.message : 'fetch failed');
+      networkError.name = 'NetworkError';
+      throw networkError;
+    }
 
     if (!response.ok) {
       const errorBody = await this.safeReadErrorBody(response);
@@ -207,7 +400,20 @@ export class AIService {
 
   private async safeReadErrorBody(response: Response): Promise<Record<string, unknown>> {
     try {
-      return await response.json();
+      const payload = await response.json();
+      const nestedMessage = payload?.error?.message;
+
+      if (
+        typeof nestedMessage === 'string' &&
+        typeof payload?.message !== 'string'
+      ) {
+        return {
+          ...payload,
+          message: nestedMessage,
+        };
+      }
+
+      return payload;
     } catch {
       return {};
     }
@@ -368,6 +574,7 @@ ${highlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`).j
 
   private handleAIError(error: unknown): AIError {
     const candidate = error as Error & { status?: number };
+    const normalizedMessage = candidate.message?.toLowerCase() ?? '';
 
     if (candidate.status === 401) {
       return new AIError('INVALID_API_KEY', 'API Key无效，请检查设置');
@@ -378,7 +585,12 @@ ${highlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`).j
     if (candidate.status === 400) {
       return new AIError('INVALID_REQUEST', '请求参数无效');
     }
-    if (candidate.name === 'NetworkError' || candidate.message?.toLowerCase().includes('network')) {
+    if (
+      candidate.name === 'NetworkError' ||
+      normalizedMessage.includes('network') ||
+      normalizedMessage.includes('fetch failed') ||
+      normalizedMessage.includes('failed to fetch')
+    ) {
       return new AIError('NETWORK_ERROR', '网络连接失败，请检查网络');
     }
     if (candidate instanceof AIError) {
@@ -392,6 +604,8 @@ ${highlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`).j
     paperId: number;
     pdfText: string;
     highlights: Highlight[];
+    apiKey?: string;
+    model?: string;
     onProgress?: (chunk: string) => void;
   }): Promise<{
     summary: string[];
@@ -403,14 +617,14 @@ ${highlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`).j
     };
     cost: number;
   }> {
-    const { paperId, pdfText, highlights, onProgress } = options;
+    const { paperId, pdfText, highlights, apiKey, model, onProgress } = options;
     const cacheKey = `clip-summary-${paperId}`;
     const cached = await cacheService.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    if (!this.isConfigured()) {
+    if (!apiKey && !this.isConfigured()) {
       throw new AIError('API_KEY_MISSING', '请先在设置中配置API Key');
     }
 
@@ -443,6 +657,8 @@ ${topHighlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`
       const fullResponse = await this.requestChatCompletion({
         prompt,
         maxTokens: 500,
+        apiKey,
+        model,
         onProgress,
         stream: true,
       });
@@ -494,6 +710,8 @@ ${topHighlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`
     paperId: number;
     pdfText: string;
     highlights: Highlight[];
+    apiKey?: string;
+    model?: string;
     onProgress?: (chunk: string) => void;
   }): Promise<{
     researchQuestion: string;
@@ -508,14 +726,14 @@ ${topHighlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`
     };
     cost: number;
   }> {
-    const { paperId, pdfText, highlights, onProgress } = options;
+    const { paperId, pdfText, highlights, apiKey, model, onProgress } = options;
     const cacheKey = `structured-info-${paperId}`;
     const cached = await cacheService.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    if (!this.isConfigured()) {
+    if (!apiKey && !this.isConfigured()) {
       throw new AIError('API_KEY_MISSING', '请先在设置中配置API Key');
     }
 
@@ -551,6 +769,8 @@ ${topHighlights.map((highlight) => `- [${highlight.priority}] ${highlight.text}`
       const fullResponse = await this.requestChatCompletion({
         prompt,
         maxTokens: 2000,
+        apiKey,
+        model,
         onProgress,
         stream: true,
       });

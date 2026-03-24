@@ -1,5 +1,7 @@
 import type { EvidenceSubmission, InvestigationTask } from '@/types';
 
+export const FINAL_REPORT_QUESTION_THRESHOLD = 10;
+
 export function evaluateTaskProgress(
   tasks: InvestigationTask[],
   evidenceSubmissions: EvidenceSubmission[]
@@ -26,4 +28,20 @@ export function evaluateTaskProgress(
   }
 
   return updatedTasks;
+}
+
+export function getCompletedQuestionCount(tasks: InvestigationTask[]): number {
+  return tasks.filter((task) => task.status === 'completed').length;
+}
+
+export function getFinalReportUnlockThreshold(tasks: InvestigationTask[]): number {
+  if (tasks.length === 0) {
+    return FINAL_REPORT_QUESTION_THRESHOLD;
+  }
+
+  return Math.min(FINAL_REPORT_QUESTION_THRESHOLD, tasks.length);
+}
+
+export function isFinalReportUnlocked(tasks: InvestigationTask[]): boolean {
+  return getCompletedQuestionCount(tasks) >= getFinalReportUnlockThreshold(tasks);
 }

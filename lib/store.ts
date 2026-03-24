@@ -3,6 +3,12 @@ import { create } from 'zustand';
 import type {
   AIClueCard,
   CaseSetup,
+  DeductionGraph,
+  DeductionGraphEdge,
+  DeductionGraphNode,
+  EvidenceClusterId,
+  EvidenceRelationship,
+  EvidenceRelationshipType,
   EvidenceType,
   EvidenceSubmission,
   Group,
@@ -12,7 +18,7 @@ import type {
 } from '@/types';
 
 import { dbHelpers } from './db';
-import { evaluateTaskProgress } from './investigationRules';
+import { evaluateTaskProgress, isFinalReportUnlocked } from './investigationRules';
 
 // Undo/Redo types
 export type ActionType = 'add' | 'update' | 'delete' | 'move';
@@ -46,6 +52,8 @@ interface PaperState {
   caseSetup: CaseSetup | null;
   investigationTasks: InvestigationTask[];
   evidenceSubmissions: EvidenceSubmission[];
+  evidenceRelationships: EvidenceRelationship[];
+  deductionGraphs: DeductionGraph[];
   activeTaskId: string | null;
   investigationPhase: 'setup' | 'investigate' | 'report';
 
@@ -92,7 +100,24 @@ interface PaperState {
   // Case investigation actions
   loadCaseSetup: (paperId: number) => Promise<void>;
   loadEvidenceSubmissions: (paperId: number) => Promise<void>;
+  loadEvidenceRelationships: (paperId: number) => Promise<void>;
+  loadDeductionGraphs: (paperId: number) => Promise<void>;
   submitEvidence: (taskId: string, highlightId: number, evidenceType: EvidenceType, note: string) => Promise<number>;
+  assignEvidenceCluster: (submissionId: number, clusterId: EvidenceClusterId | null) => Promise<void>;
+  updateEvidenceTags: (submissionId: number, aiTags: string[]) => Promise<void>;
+  addEvidenceRelationship: (
+    taskId: string,
+    fromSubmissionId: number,
+    toSubmissionId: number,
+    relationshipType: EvidenceRelationshipType,
+    note?: string
+  ) => Promise<number>;
+  deleteEvidenceRelationship: (relationshipId: number) => Promise<void>;
+  saveDeductionGraph: (taskId: string, nodes: DeductionGraphNode[], edges: DeductionGraphEdge[]) => Promise<void>;
+  applyEvidenceClusterSuggestions: (
+    updates: Array<{ submissionId: number; clusterId: EvidenceClusterId; aiTags?: string[] }>
+  ) => Promise<void>;
+  applyTaskEvaluation: (taskId: string, evaluation: { score: number; feedback: string; submittedAt?: string }) => void;
   setActiveTask: (taskId: string | null) => void;
   setInvestigationPhase: (phase: 'setup' | 'investigate' | 'report') => void;
 
@@ -118,6 +143,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
   caseSetup: null,
   investigationTasks: [],
   evidenceSubmissions: [],
+  evidenceRelationships: [],
+  deductionGraphs: [],
   activeTaskId: null,
   investigationPhase: 'setup',
   selectedPriority: 'important',
@@ -304,6 +331,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       void get().loadAIClueCards(paper.id!);
       void get().loadCaseSetup(paper.id!);
       void get().loadEvidenceSubmissions(paper.id!);
+      void get().loadEvidenceRelationships(paper.id!);
+      void get().loadDeductionGraphs(paper.id!);
     }
   },
 
@@ -343,6 +372,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           caseSetup: null,
           investigationTasks: [],
           evidenceSubmissions: [],
+          evidenceRelationships: [],
+          deductionGraphs: [],
           activeTaskId: null,
           investigationPhase: 'setup',
         });
@@ -661,6 +692,26 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     }
   },
 
+  loadEvidenceRelationships: async (paperId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const evidenceRelationships = await dbHelpers.getEvidenceRelationships(paperId);
+      set({ evidenceRelationships, isLoading: false });
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
+  loadDeductionGraphs: async (paperId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const deductionGraphs = await dbHelpers.getDeductionGraphs(paperId);
+      set({ deductionGraphs, isLoading: false });
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
   submitEvidence: async (taskId, highlightId, evidenceType, note) => {
     const { currentPaper } = get();
     if (!currentPaper?.id) {
@@ -694,13 +745,28 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           },
         ];
         const nextTasks = evaluateTaskProgress(state.investigationTasks, nextEvidenceSubmissions);
-        const isReportUnlocked = nextTasks.length > 0 && nextTasks.every((task) => task.status === 'completed');
+        const isReportUnlocked = isFinalReportUnlocked(nextTasks);
+        const preservedActiveTask =
+          nextTasks.find((task) => task.id === taskId) ??
+          nextTasks.find((task) => task.id === state.activeTaskId) ??
+          null;
         const nextActiveTask = nextTasks.find((task) => task.status === 'available' || task.status === 'in_progress');
+        const nextGroups = state.groups.map((group) => {
+          if (group.type !== 'inbox') {
+            return group;
+          }
+
+          return {
+            ...group,
+            items: (group.items || []).filter((item) => item.id !== highlightId),
+          };
+        });
 
         return {
           evidenceSubmissions: nextEvidenceSubmissions,
+          groups: nextGroups,
           investigationTasks: nextTasks,
-          activeTaskId: nextActiveTask?.id ?? null,
+          activeTaskId: preservedActiveTask?.id ?? nextActiveTask?.id ?? null,
           investigationPhase: isReportUnlocked ? 'report' : state.investigationPhase,
           isLoading: false,
         };
@@ -712,6 +778,182 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       throw error;
     }
   },
+
+  assignEvidenceCluster: async (submissionId, clusterId) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const nextClusterId = clusterId ?? undefined;
+      await dbHelpers.updateEvidenceSubmission(submissionId, { clusterId: nextClusterId });
+      set((state) => ({
+        evidenceSubmissions: state.evidenceSubmissions.map((submission) =>
+          submission.id === submissionId ? { ...submission, clusterId: nextClusterId } : submission
+        ),
+        isLoading: false,
+      }));
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  updateEvidenceTags: async (submissionId, aiTags) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await dbHelpers.updateEvidenceSubmission(submissionId, { aiTags });
+      set((state) => ({
+        evidenceSubmissions: state.evidenceSubmissions.map((submission) =>
+          submission.id === submissionId ? { ...submission, aiTags } : submission
+        ),
+        isLoading: false,
+      }));
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  addEvidenceRelationship: async (taskId, fromSubmissionId, toSubmissionId, relationshipType, note) => {
+    const { currentPaper } = get();
+    if (!currentPaper?.id) {
+      throw new Error('No active paper selected');
+    }
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const createdAt = new Date().toISOString();
+      const id = await dbHelpers.addEvidenceRelationship({
+        paperId: currentPaper.id,
+        taskId,
+        fromSubmissionId,
+        toSubmissionId,
+        relationshipType,
+        note,
+        createdAt,
+      });
+
+      set((state) => ({
+        evidenceRelationships: [
+          ...state.evidenceRelationships,
+          {
+            id,
+            paperId: currentPaper.id!,
+            taskId,
+            fromSubmissionId,
+            toSubmissionId,
+            relationshipType,
+            note,
+            createdAt,
+          },
+        ],
+        isLoading: false,
+      }));
+
+      return id;
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  deleteEvidenceRelationship: async (relationshipId) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await dbHelpers.deleteEvidenceRelationship(relationshipId);
+      set((state) => ({
+        evidenceRelationships: state.evidenceRelationships.filter(
+          (relationship) => relationship.id !== relationshipId
+        ),
+        isLoading: false,
+      }));
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  saveDeductionGraph: async (taskId, nodes, edges) => {
+    const { currentPaper } = get();
+    if (!currentPaper?.id) {
+      throw new Error('No active paper selected');
+    }
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const updatedAt = new Date().toISOString();
+      const graph = {
+        paperId: currentPaper.id,
+        taskId,
+        nodes,
+        edges,
+        updatedAt,
+      };
+      const id = await dbHelpers.saveDeductionGraph(graph);
+
+      set((state) => ({
+        deductionGraphs: [
+          ...state.deductionGraphs.filter((item) => item.taskId !== taskId),
+          { ...graph, id },
+        ],
+        isLoading: false,
+      }));
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  applyEvidenceClusterSuggestions: async (updates) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await Promise.all(
+        updates.map((update) =>
+          dbHelpers.updateEvidenceSubmission(update.submissionId, {
+            clusterId: update.clusterId,
+            aiTags: update.aiTags,
+          })
+        )
+      );
+
+      set((state) => ({
+        evidenceSubmissions: state.evidenceSubmissions.map((submission) => {
+          const matched = updates.find((update) => update.submissionId === submission.id);
+          if (!matched) {
+            return submission;
+          }
+
+          return {
+            ...submission,
+            clusterId: matched.clusterId,
+            aiTags: matched.aiTags,
+          };
+        }),
+        isLoading: false,
+      }));
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+      throw error;
+    }
+  },
+
+  applyTaskEvaluation: (taskId, evaluation) =>
+    set((state) => ({
+      investigationTasks: state.investigationTasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              score: evaluation.score,
+              feedback: evaluation.feedback,
+              submittedAt: evaluation.submittedAt ?? new Date().toISOString(),
+            }
+          : task
+      ),
+    })),
 
   setActiveTask: (taskId) => set({ activeTaskId: taskId }),
 

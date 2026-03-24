@@ -55,6 +55,7 @@ describe('/api/ai/case-setup', () => {
       paperId: 1,
       pdfText: 'Paper body',
       forceRegenerate: false,
+      apiKey: undefined,
     });
   });
 
@@ -78,14 +79,46 @@ describe('/api/ai/case-setup', () => {
       }),
     });
 
-    await expect(POST(postRequest)).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-    });
+    const postResponse = await POST(postRequest);
+    const postData = await postResponse.json();
+
+    expect(postResponse.status).toBe(400);
+    expect(postData.success).toBe(false);
+    expect(postData.error.code).toBe('VALIDATION_ERROR');
 
     const getRequest = makeRequest('http://localhost:3000/api/ai/case-setup');
 
-    await expect(GET(getRequest)).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getResponse.status).toBe(400);
+    expect(getData.success).toBe(false);
+    expect(getData.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 503 for network errors from the AI layer', async () => {
+    mockCaseSetupService.generateCaseSetup.mockRejectedValue({
+      code: 'NETWORK_ERROR',
+      message: '网络连接失败，请检查网络',
+    });
+
+    const request = makeRequest('http://localhost:3000/api/ai/case-setup', {
+      method: 'POST',
+      body: JSON.stringify({
+        paperId: 1,
+        pdfText: 'Paper body',
+        apiKey: 'test-key',
+      }),
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(data.success).toBe(false);
+    expect(data.error).toEqual({
+      code: 'NETWORK_ERROR',
+      message: '网络连接失败，请检查网络',
     });
   });
 });

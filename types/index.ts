@@ -41,8 +41,15 @@ export type {
 
 export type {
   CaseSetup,
+  DeductionGraph,
+  DeductionGraphEdge,
+  DeductionGraphNode,
+  DeductionRelationType,
   CaseProgressSnapshot,
+  EvidenceRelationship,
+  EvidenceRelationshipType,
   EvidenceSubmission,
+  EvidenceClusterId,
   EvidenceType,
   InvestigationTask,
   InvestigationTaskStatus,
@@ -50,6 +57,8 @@ export type {
   PaperStructureKind,
   PaperStructureNode,
   PaperStructureStatus,
+  QuestionSection,
+  TaskSubmissionMode,
   TaskProgress,
 } from './case.types';
 
@@ -70,6 +79,12 @@ export interface Highlight {
     width: number;  // 相对宽度(%)
     height: number; // 相对高度(%)
   };
+  rects?: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
   // 扁平化的坐标属性（用于兼容旧代码和测试）
   x?: number;       // 绝对坐标或相对坐标
   y?: number;       // 绝对坐标或相对坐标

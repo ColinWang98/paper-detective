@@ -1,56 +1,133 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-import { ValidationError, success, withErrorHandler } from '@/lib/api/response';
 import { caseSetupService } from '@/services/caseSetupService';
 
 interface CaseSetupRequestBody {
   paperId: number;
   pdfText: string;
   forceRegenerate?: boolean;
+  apiKey?: string;
+  model?: string;
 }
 
-function validateBody(body: unknown): asserts body is CaseSetupRequestBody {
+function parseBody(body: unknown): CaseSetupRequestBody {
   if (typeof body !== 'object' || body === null) {
-    throw new ValidationError('Request body must be an object');
+    throw new Error('Request body must be an object');
   }
 
   const payload = body as Record<string, unknown>;
 
   if (typeof payload.paperId !== 'number') {
-    throw ValidationError.forField('paperId', 'paperId must be a number');
+    throw new Error('paperId must be a number');
   }
 
   if (typeof payload.pdfText !== 'string' || payload.pdfText.trim() === '') {
-    throw ValidationError.forField('pdfText', 'pdfText is required and must be a non-empty string');
+    throw new Error('pdfText is required and must be a non-empty string');
+  }
+
+  return {
+    paperId: payload.paperId,
+    pdfText: payload.pdfText,
+    forceRegenerate: typeof payload.forceRegenerate === 'boolean' ? payload.forceRegenerate : false,
+    apiKey: typeof payload.apiKey === 'string' ? payload.apiKey : undefined,
+    model: typeof payload.model === 'string' ? payload.model : undefined,
+  };
+}
+
+function mapErrorToResponse(error: unknown): NextResponse {
+  const candidate = error as Error & { code?: string; status?: number };
+  const message = candidate.message || 'Unknown error occurred';
+  const code = candidate.code;
+
+  if (code === 'API_KEY_MISSING') {
+    return NextResponse.json(
+      { success: false, error: { code, message } },
+      { status: 401 }
+    );
+  }
+
+  if (code === 'INVALID_API_KEY') {
+    return NextResponse.json(
+      { success: false, error: { code, message } },
+      { status: 401 }
+    );
+  }
+
+  if (code === 'RATE_LIMIT' || candidate.status === 429) {
+    return NextResponse.json(
+      { success: false, error: { code: 'RATE_LIMIT', message } },
+      { status: 429 }
+    );
+  }
+
+  if (code === 'NETWORK_ERROR') {
+    return NextResponse.json(
+      { success: false, error: { code: 'NETWORK_ERROR', message } },
+      { status: 503 }
+    );
+  }
+
+  if (code === 'PARSE_ERROR') {
+    return NextResponse.json(
+      { success: false, error: { code: 'PARSE_ERROR', message } },
+      { status: 502 }
+    );
+  }
+
+  if (
+    message.includes('paperId must be a number') ||
+    message.includes('paperId must be a valid number') ||
+    message.includes('pdfText is required') ||
+    message.includes('Request body must be an object') ||
+    message.includes('Missing required query parameter: paperId')
+  ) {
+    return NextResponse.json(
+      { success: false, error: { code: 'VALIDATION_ERROR', message } },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json(
+    { success: false, error: { code: 'UNKNOWN_ERROR', message } },
+    { status: 500 }
+  );
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  try {
+    const body = parseBody(await request.json());
+    const caseSetup = await caseSetupService.generateCaseSetup(body);
+
+    return NextResponse.json({
+      success: true,
+      data: caseSetup,
+    });
+  } catch (error) {
+    return mapErrorToResponse(error);
   }
 }
 
-export const POST = withErrorHandler(async (request: NextRequest) => {
-  const body = await request.json();
-  validateBody(body);
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  try {
+    const { searchParams } = new URL(request.url);
+    const paperId = searchParams.get('paperId');
 
-  const caseSetup = await caseSetupService.generateCaseSetup({
-    paperId: body.paperId,
-    pdfText: body.pdfText,
-    forceRegenerate: body.forceRegenerate ?? false,
-  });
+    if (!paperId) {
+      throw new Error('Missing required query parameter: paperId');
+    }
 
-  return success(caseSetup);
-});
+    const paperIdNumber = Number.parseInt(paperId, 10);
+    if (Number.isNaN(paperIdNumber)) {
+      throw new Error('paperId must be a valid number');
+    }
 
-export const GET = withErrorHandler(async (request: NextRequest) => {
-  const { searchParams } = new URL(request.url);
-  const paperId = searchParams.get('paperId');
+    const caseSetup = await caseSetupService.getCaseSetup(paperIdNumber);
 
-  if (!paperId) {
-    throw ValidationError.forField('paperId', 'Missing required query parameter: paperId');
+    return NextResponse.json({
+      success: true,
+      data: caseSetup,
+    });
+  } catch (error) {
+    return mapErrorToResponse(error);
   }
-
-  const paperIdNumber = Number.parseInt(paperId, 10);
-  if (Number.isNaN(paperIdNumber)) {
-    throw ValidationError.forField('paperId', 'paperId must be a valid number');
-  }
-
-  const caseSetup = await caseSetupService.getCaseSetup(paperIdNumber);
-  return success(caseSetup);
-});
+}

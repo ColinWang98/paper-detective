@@ -4,7 +4,9 @@
 import { useState, useCallback, useEffect } from 'react';
 
 import { extractPDFText } from '@/lib/pdf';
+import { isFinalReportUnlocked } from '@/lib/investigationRules';
 import { usePaperStore } from '@/lib/store';
+import { getAPIKey, getActiveProviderConfig } from '@/services/apiKeyManager';
 import type { IntelligenceBrief, GenerateBriefOptions } from '@/types/ai.types';
 
 /**
@@ -14,6 +16,7 @@ export interface UseIntelligenceBriefOptions {
   onProgress?: (stage: string, progress: number) => void;
   onBriefGenerated?: (brief: IntelligenceBrief) => void;
   onError?: (error: string) => void;
+  mode?: 'direct-brief' | 'final-report';
 }
 
 /**
@@ -32,7 +35,7 @@ export interface IntelligenceBriefStateValue {
  * Combines Clip summary, structured info, and AI clue cards
  */
 export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) {
-  const { onProgress, onBriefGenerated, onError } = options;
+  const { onProgress, onBriefGenerated, onError, mode = 'direct-brief' } = options;
 
   // Zustand store
   const { currentPaper, highlights, caseSetup } = usePaperStore();
@@ -140,6 +143,8 @@ export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) 
           pdfText,
           highlights,
           forceRegenerate,
+          apiKey: getAPIKey() ?? undefined,
+          model: getActiveProviderConfig().model,
         }),
       });
 
@@ -390,19 +395,24 @@ export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) 
     const { brief } = state;
 
     // Generate BibTeX citation from case file metadata
-    const authors = brief.caseFile.authors || ['Unknown Author'];
+    const authors = brief.caseFile.authors && brief.caseFile.authors.length > 0
+      ? brief.caseFile.authors
+      : ['Unknown Author'];
     const year = brief.caseFile.publicationDate
       ? new Date(brief.caseFile.publicationDate).getFullYear().toString()
       : 'n.d.';
     const title = brief.caseFile.title;
 
     // Generate a citation key from first author + year + first word of title
-    const firstAuthor = authors[0].split(' ').pop() || 'unknown';
+    const firstAuthor = (authors[0] || 'Unknown Author').split(' ').pop() || 'unknown';
     const titleFirstWord = title.split(' ')[0].toLowerCase();
     const citationKey = `${firstAuthor}${year}_${titleFirstWord}`;
 
     // Format authors for BibTeX
     const formattedAuthors = authors.map(author => {
+      if (author === 'Unknown Author') {
+        return author;
+      }
       const parts = author.split(' ');
       if (parts.length === 2) {
         return `${parts[1]}, ${parts[0]}`;
@@ -461,7 +471,9 @@ export function useIntelligenceBrief(options: UseIntelligenceBriefOptions = {}) 
     isSuccess: state.status === 'success',
     isError: state.status === 'error',
     hasBrief: state.brief !== null,
-    isReportLocked: Boolean(caseSetup && caseSetup.tasks.some(task => task.status !== 'completed')),
+    isReportLocked: mode === 'final-report'
+      ? Boolean(caseSetup && !isFinalReportUnlocked(caseSetup.tasks))
+      : false,
 
     // Actions
     generateBrief,

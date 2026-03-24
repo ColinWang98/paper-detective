@@ -21,12 +21,14 @@ interface IntelligenceBriefViewerProps {
   paperId: number;
   pdfFile?: File;
   className?: string;
+  mode?: 'direct-brief' | 'final-report';
 }
 
 export function IntelligenceBriefViewer({
   paperId,
   pdfFile,
   className = '',
+  mode = 'direct-brief',
 }: IntelligenceBriefViewerProps): React.JSX.Element {
   const {
     status,
@@ -39,7 +41,7 @@ export function IntelligenceBriefViewer({
     exportAsMarkdown,
     exportAsBibTeX,
     deleteBrief,
-  } = useIntelligenceBrief({});
+  } = useIntelligenceBrief({ mode });
 
   const [isExportingMarkdown, setIsExportingMarkdown] = useState(false);
   const [isExportingBibTeX, setIsExportingBibTeX] = useState(false);
@@ -51,10 +53,10 @@ export function IntelligenceBriefViewer({
   const { toasts, showToast, dismissToast } = useToast();
 
   useEffect(() => {
-    if (!brief && !error && status === 'idle' && pdfFile) {
+    if (mode === 'direct-brief' && !brief && !error && status === 'idle' && pdfFile) {
       void generateBrief(pdfFile);
     }
-  }, [brief, error, status, pdfFile, generateBrief]);
+  }, [brief, error, status, pdfFile, generateBrief, mode]);
 
   const triggerDownload = useCallback((content: string, fileName: string, mimeType: string) => {
     const blob = new Blob([content], { type: mimeType });
@@ -224,7 +226,7 @@ export function IntelligenceBriefViewer({
     );
   }
 
-  if (!brief && isReportLocked) {
+  if (mode === 'final-report' && !brief && isReportLocked) {
     return (
       <>
         <div className={`rounded-lg border border-dashed border-newspaper-border bg-newspaper-cream p-8 ${className}`}>
@@ -257,6 +259,12 @@ export function IntelligenceBriefViewer({
   }
 
   if (!brief) {
+    const emptyTitle = mode === 'direct-brief' ? 'AI Brief Ready to Generate' : '暂无情报简报';
+    const emptyDescription = mode === 'direct-brief'
+      ? 'Upload a paper and generate a direct AI brief with structure, findings, and key takeaways.'
+      : '点击下方按钮生成 AI 分析报告';
+    const actionLabel = mode === 'direct-brief' ? 'Generate AI Brief' : '生成情报简报';
+
     return (
       <>
         <div className={`rounded-lg border border-dashed border-newspaper-border bg-newspaper-cream p-8 ${className}`}>
@@ -267,8 +275,8 @@ export function IntelligenceBriefViewer({
           >
             <FileText className="h-12 w-12 text-gray-400" aria-hidden="true" />
             <div>
-              <h3 className="mb-1 text-lg font-bold text-gray-900">暂无情报简报</h3>
-              <p className="text-sm text-gray-600">点击下方按钮生成 AI 分析报告</p>
+              <h3 className="mb-1 text-lg font-bold text-gray-900">{emptyTitle}</h3>
+              <p className="text-sm text-gray-600">{emptyDescription}</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -281,7 +289,7 @@ export function IntelligenceBriefViewer({
                 className="flex items-center gap-2 rounded-lg bg-newspaper-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                生成情报简报
+                {actionLabel}
               </button>
               <button
                 onClick={() => setShowAPIKeyModal(true)}

@@ -1,16 +1,22 @@
 // PDF utility functions using PDF.js
-// Dynamic import to avoid webpack bundling issues with ES modules
+// Reuse react-pdf's bundled PDF.js runtime to keep API/worker versions aligned.
+
+import { pdfjs } from 'react-pdf';
 
 import { getPdfWorkerSrc } from './pdfWorker';
 
-let pdfjsLib: any = null;
+let pdfjsLib: typeof pdfjs | null = null;
 
 async function getPDFLib() {
-  if (!pdfjsLib && typeof window !== 'undefined') {
-    const pdfjs = await import('pdfjs-dist');
-    pdfjsLib = pdfjs;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfWorkerSrc(pdfjsLib.version);
+  if (typeof window === 'undefined') {
+    return null;
   }
+
+  if (!pdfjsLib) {
+    pdfjs.GlobalWorkerOptions.workerSrc = getPdfWorkerSrc(pdfjs.version);
+    pdfjsLib = pdfjs;
+  }
+
   return pdfjsLib;
 }
 

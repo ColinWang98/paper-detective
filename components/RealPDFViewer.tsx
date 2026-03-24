@@ -12,13 +12,61 @@ import { PRIORITY_COLOR_MAP, type Highlight, type HighlightColor, type Highlight
 import { HighlightOverlay } from './HighlightOverlay';
 import PriorityLegend from './PriorityLegend';
 
-// Debounce utility for zoom (100ms delay)
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T {
-  let timeout: NodeJS.Timeout | null = null;
-  return ((...args: Parameters<T>) => {
-    if (timeout) {clearTimeout(timeout);}
-    timeout = setTimeout(() => func(...args), wait);
-  }) as T;
+function normalizeSelectionText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function isSelectionInsidePdfTextLayer(selection: Selection, container: HTMLDivElement | null): boolean {
+  if (!container || selection.rangeCount === 0) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  const commonAncestor = range.commonAncestorContainer;
+  const element = commonAncestor.nodeType === Node.ELEMENT_NODE
+    ? commonAncestor as Element
+    : commonAncestor.parentElement;
+
+  return Boolean(element?.closest('.react-pdf__Page__textContent')) && container.contains(element ?? null);
+}
+
+function getBoundingRectFromClientRects(rects: DOMRectList): DOMRect | null {
+  if (rects.length === 0) {
+    return null;
+  }
+
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (const rect of Array.from(rects)) {
+    if (rect.width === 0 || rect.height === 0) {
+      continue;
+    }
+
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.right);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+
+  if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(right) || !Number.isFinite(bottom)) {
+    return null;
+  }
+
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+function getRelativeRects(rects: DOMRectList, pageRect: DOMRect) {
+  return Array.from(rects)
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      x: Math.max(0, Math.min(100, ((rect.left - pageRect.left) / pageRect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((rect.top - pageRect.top) / pageRect.height) * 100)),
+      width: Math.max(0, Math.min(100, (rect.width / pageRect.width) * 100)),
+      height: Math.max(0, Math.min(100, (rect.height / pageRect.height) * 100)),
+    }));
 }
 
 // 配置PDF.js worker
@@ -46,8 +94,10 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
 
   // Highlight state
   const [selectionRange, setSelectionRange] = useState<any>(null);
+  const [selectionDraftText, setSelectionDraftText] = useState<string>('');
   const [_highlightAreas, setHighlightAreas] = useState<Map<number, any[]>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageOverlayRef = useRef<HTMLDivElement>(null);
 
   // Initialize database on mount
   useEffect(() => {
@@ -110,20 +160,12 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
   const goToPreviousPage = () => setCurrentPage((prev) => Math.max(1, prev - 1));
   const goToNextPage = () => setCurrentPage((prev) => Math.min(numPages, prev + 1));
 
-  // Zoom with debouncing for performance
-  const debouncedSetScale = useCallback(
-    debounce((newScale: number) => setScale(newScale), 100),
-    []
-  );
-
   const zoomIn = () => {
-    const newScale = Math.min(2.0, scale + 0.1);
-    debouncedSetScale(newScale);
+    setScale((prev) => Math.min(2.4, Number((prev + 0.1).toFixed(2))));
   };
 
   const zoomOut = () => {
-    const newScale = Math.max(0.5, scale - 0.1);
-    debouncedSetScale(newScale);
+    setScale((prev) => Math.max(0.6, Number((prev - 0.1).toFixed(2))));
   };
 
   // HCI-compliant: priority-based colors
@@ -137,10 +179,17 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
   // Handle text selection
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
-    const text = selection?.toString().trim();
+    if (!selection || !isSelectionInsidePdfTextLayer(selection, containerRef.current)) {
+      setSelectionRange(null);
+      setSelectionDraftText('');
+      return;
+    }
+
+    const text = normalizeSelectionText(selection.toString());
 
     if (!text || text.length === 0) {
       setSelectionRange(null);
+      setSelectionDraftText('');
       return;
     }
 
@@ -148,100 +197,75 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
     if (!range) {return;}
 
     const rects = range.getClientRects();
-    if (rects.length === 0) {return;}
+    const boundingRect = getBoundingRectFromClientRects(rects);
+    const pageRect = pageOverlayRef.current?.getBoundingClientRect();
+    if (!boundingRect || !pageRect) {return;}
+    const relativeRects = getRelativeRects(rects, pageRect);
+    if (relativeRects.length === 0) {
+      setSelectionRange(null);
+      setSelectionDraftText('');
+      return;
+    }
 
-    // Calculate bounding box
-    const boundingRect = {
-      x: rects[0].left,
-      y: rects[0].top,
-      width: rects[rects.length - 1].right - rects[0].left,
-      height: rects[rects.length - 1].bottom - rects[0].top,
-    };
+    const relativeX = ((boundingRect.left - pageRect.left) / pageRect.width) * 100;
+    const relativeY = ((boundingRect.top - pageRect.top) / pageRect.height) * 100;
+    const relativeWidth = (boundingRect.width / pageRect.width) * 100;
+    const relativeHeight = (boundingRect.height / pageRect.height) * 100;
 
     setSelectionRange({
       text,
-      rect: boundingRect,
+      rect: {
+        x: boundingRect.left - pageRect.left,
+        y: boundingRect.top - pageRect.top,
+        width: boundingRect.width,
+        height: boundingRect.height,
+      },
+      position: {
+        x: Math.max(0, Math.min(100, relativeX)),
+        y: Math.max(0, Math.min(100, relativeY)),
+        width: Math.max(0, Math.min(100, relativeWidth)),
+        height: Math.max(0, Math.min(100, relativeHeight)),
+      },
+      rects: relativeRects,
       range,
     });
+    setSelectionDraftText(text);
   }, []);
 
   // Create highlight from selection
   const createHighlight = async () => {
-    if (!selectionRange || !currentPaper || !containerRef.current) {return;}
+    if (!selectionRange || !currentPaper) {return;}
 
     const startTime = performance.now();
 
     try {
-      const color = PRIORITY_COLOR_MAP[selectedPriority];
-
-      // Calculate relative coordinates (percentage) based on container
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const containerWidth = containerRect.width;
-      const containerHeight = containerRect.height;
-
-      // Get the PDF page container position
-      const pdfPage = containerRef.current.querySelector('.react-pdf__Page');
-      const pdfRect = pdfPage?.getBoundingClientRect();
-
-      if (pdfRect) {
-        // Calculate position relative to PDF page
-        const relativeX = ((selectionRange.rect.x - pdfRect.left) / pdfRect.width) * 100;
-        const relativeY = ((selectionRange.rect.y - pdfRect.top) / pdfRect.height) * 100;
-        const relativeWidth = (selectionRange.rect.width / pdfRect.width) * 100;
-        const relativeHeight = (selectionRange.rect.height / pdfRect.height) * 100;
-
-        const highlightData: Omit<Highlight, 'id'> = {
-          paperId: currentPaper.id!,
-          pageNumber: currentPage,
-          text: selectionRange.text,
-          priority: selectedPriority,
-          color,
-          position: {
-            x: Math.max(0, Math.min(100, relativeX)),
-            y: Math.max(0, Math.min(100, relativeY)),
-            width: Math.max(0, Math.min(100, relativeWidth)),
-            height: Math.max(0, Math.min(100, relativeHeight)),
-          },
-          timestamp: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        };
-
-        const highlightId = await addHighlight(highlightData);
-        const createdHighlight = { ...highlightData, id: highlightId } as Highlight;
-        _onHighlightAdd?.(createdHighlight);
-        onEvidenceRequest?.(createdHighlight);
-      } else {
-        // Fallback to container-relative coordinates
-        const relativeX = (selectionRange.rect.x / containerWidth) * 100;
-        const relativeY = (selectionRange.rect.y / containerHeight) * 100;
-        const relativeWidth = (selectionRange.rect.width / containerWidth) * 100;
-        const relativeHeight = (selectionRange.rect.height / containerHeight) * 100;
-
-        const highlightData: Omit<Highlight, 'id'> = {
-          paperId: currentPaper.id!,
-          pageNumber: currentPage,
-          text: selectionRange.text,
-          priority: selectedPriority,
-          color,
-          position: {
-            x: Math.max(0, Math.min(100, relativeX)),
-            y: Math.max(0, Math.min(100, relativeY)),
-            width: Math.max(0, Math.min(100, relativeWidth)),
-            height: Math.max(0, Math.min(100, relativeHeight)),
-          },
-          timestamp: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        };
-
-        const highlightId = await addHighlight(highlightData);
-        const createdHighlight = { ...highlightData, id: highlightId } as Highlight;
-        _onHighlightAdd?.(createdHighlight);
-        onEvidenceRequest?.(createdHighlight);
+      const normalizedText = normalizeSelectionText(selectionDraftText);
+      if (!normalizedText) {
+        return;
       }
+
+      const color = PRIORITY_COLOR_MAP[selectedPriority];
+      const highlightData: Omit<Highlight, 'id'> = {
+        paperId: currentPaper.id!,
+        pageNumber: currentPage,
+        text: normalizedText,
+        priority: selectedPriority,
+        color,
+        position: selectionRange.position,
+        rects: selectionRange.rects,
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+
+      const highlightId = await addHighlight(highlightData);
+      const createdHighlight = { ...highlightData, id: highlightId } as Highlight;
+      _onHighlightAdd?.(createdHighlight);
+      onEvidenceRequest?.(createdHighlight);
 
       // Clear selection
       window.getSelection()?.removeAllRanges();
       setSelectionRange(null);
+      setSelectionDraftText('');
 
       const duration = performance.now() - startTime;
       if (duration > 200) {
@@ -255,11 +279,9 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
   // Listen for text selection
   useEffect(() => {
     document.addEventListener('mouseup', handleTextSelection);
-    document.addEventListener('selectionchange', handleTextSelection);
 
     return () => {
       document.removeEventListener('mouseup', handleTextSelection);
-      document.removeEventListener('selectionchange', handleTextSelection);
     };
   }, [handleTextSelection]);
 
@@ -301,6 +323,8 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
     setNumPages(0);
     setCurrentPage(1);
     setHighlightAreas(new Map());
+    setSelectionRange(null);
+    setSelectionDraftText('');
     onPdfFileChange?.(null);
   };
 
@@ -446,6 +470,7 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
         ) : (
           /* PDF rendering */
           <div className="flex justify-center relative">
+            <div ref={pageOverlayRef} className="relative inline-block">
             <Document
               file={pdfFile}
               onLoadSuccess={onDocumentLoadSuccess}
@@ -464,19 +489,17 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
             >
               <Page
                 pageNumber={currentPage}
-                scale={scale}
                 renderTextLayer={true}
                 renderAnnotationLayer={false}
                 className="bg-white"
-                width={pageWidth}
-              >
-                {/* Highlight overlay layer */}
-                <HighlightOverlay highlights={highlights} currentPage={currentPage} scale={scale} />
-              </Page>
+                width={Math.floor(pageWidth * scale)}
+              />
             </Document>
+            <HighlightOverlay highlights={highlights} currentPage={currentPage} />
+            </div>
 
             {/* Highlight selection popup */}
-            {selectionRange && (
+            {false && selectionRange && (
               <div
                 className="absolute z-50 bg-newspaper-accent text-white px-4 py-2 rounded-lg shadow-xl flex items-center gap-3"
                 style={{
@@ -503,6 +526,35 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
                 </button>
               </div>
             )}
+            {selectionRange ? (
+              <div className="fixed bottom-6 right-6 z-50 w-[min(28rem,calc(100vw-3rem))] rounded-lg bg-newspaper-accent px-4 py-3 text-white shadow-xl">
+                <p className="text-sm font-semibold">Review extracted text before saving</p>
+                <textarea
+                  value={selectionDraftText}
+                  onChange={(event) => setSelectionDraftText(event.target.value)}
+                  className="mt-2 min-h-24 w-full rounded-md border border-white/30 bg-white/10 p-2 text-sm text-white placeholder:text-white/70"
+                  placeholder="Edit the extracted text if the PDF selection is noisy."
+                />
+                <div className="mt-3 flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      window.getSelection()?.removeAllRanges();
+                      setSelectionRange(null);
+                      setSelectionDraftText('');
+                    }}
+                    className="rounded px-3 py-1 text-sm hover:bg-white/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { void createHighlight(); }}
+                    className="rounded bg-white px-3 py-1 text-sm font-bold text-newspaper-accent hover:bg-newspaper-cream transition-colors"
+                  >
+                    Save Highlight
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

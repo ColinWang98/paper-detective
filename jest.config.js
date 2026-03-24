@@ -32,6 +32,8 @@ const customJestConfig = {
     // Mock Next.js server components
     '^next/server$': '<rootDir>/tests/__mocks__/next.ts',
     '^next/navigation$': '<rootDir>/tests/__mocks__/next-navigation.ts',
+    '^next-intl$': '<rootDir>/tests/__mocks__/next-intl.ts',
+    '^next-intl/server$': '<rootDir>/tests/__mocks__/next-intl-server.ts',
 
     // Handle CSS modules (identity-obj-proxy returns empty object)
     '^.+\\.module\\.(css|less|scss|sass)$': 'identity-obj-proxy',
@@ -102,6 +104,11 @@ const customJestConfig = {
   testPathIgnorePatterns: [
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
+    '<rootDir>/coverage/',
+  ],
+
+  modulePathIgnorePatterns: [
+    '<rootDir>/.next/',
     '<rootDir>/coverage/',
   ],
 

@@ -1,7 +1,7 @@
 import { AIService, aiService } from '@/services/aiService';
 import { cacheService } from '@/services/cacheService';
 import * as costTracker from '@/services/costTracker';
-import { getAPIKey, hasAPIKey } from '@/services/apiKeyManager';
+import { getAPIKey, getProviderForApiKey, hasAPIKey } from '@/services/apiKeyManager';
 import type { Highlight } from '@/types';
 
 const { ReadableStream } = require('stream/web');
@@ -11,6 +11,7 @@ jest.mock('@/services/cacheService');
 jest.mock('@/services/costTracker');
 
 const mockGetAPIKey = getAPIKey as jest.MockedFunction<typeof getAPIKey>;
+const mockGetProviderForApiKey = getProviderForApiKey as jest.MockedFunction<typeof getProviderForApiKey>;
 const mockHasAPIKey = hasAPIKey as jest.MockedFunction<typeof hasAPIKey>;
 const mockCacheService = cacheService as jest.Mocked<typeof cacheService>;
 const mockCostTracker = costTracker as jest.Mocked<typeof costTracker>;
@@ -43,6 +44,15 @@ describe('AIService', () => {
 
     mockHasAPIKey.mockReturnValue(true);
     mockGetAPIKey.mockReturnValue('glm-test-key-12345678901234567890');
+    mockGetProviderForApiKey.mockImplementation((apiKey) => {
+      if (apiKey.startsWith('sk-or-v1-')) {
+        return 'openrouter';
+      }
+      if (apiKey.startsWith('sk-')) {
+        return 'deepseek';
+      }
+      return 'bigmodel';
+    });
     mockCacheService.getAnalysis.mockResolvedValue(null);
     mockCacheService.saveAnalysis.mockResolvedValue(undefined);
     mockCostTracker.estimateTokens.mockReturnValue({
@@ -163,6 +173,48 @@ describe('AIService', () => {
       );
     });
 
+    it('routes OpenRouter keys to the OpenRouter endpoint and model', async () => {
+      createStreamResponse(['{"summary":"Test"}']);
+      mockGetAPIKey.mockReturnValue('sk-or-v1-' + 'a'.repeat(32));
+
+      await service.analyzePaper({
+        paperId: mockPaperId,
+        pdfText: mockPDFText,
+        highlights: mockHighlights,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/ai/provider-proxy',
+        expect.objectContaining({
+          body: expect.stringContaining('"model":"minimax/minimax-m2.5:free"'),
+        })
+      );
+    });
+
+    it('routes DeepSeek keys to the proxy endpoint and model', async () => {
+      createStreamResponse(['{"summary":"Test"}']);
+      mockGetAPIKey.mockReturnValue('sk-' + 'b'.repeat(32));
+
+      await service.analyzePaper({
+        paperId: mockPaperId,
+        pdfText: mockPDFText,
+        highlights: mockHighlights,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/ai/provider-proxy',
+        expect.objectContaining({
+          body: expect.stringContaining('"provider":"deepseek"'),
+        })
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/ai/provider-proxy',
+        expect.objectContaining({
+          body: expect.stringContaining('"model":"deepseek-chat"'),
+        })
+      );
+    });
+
     it('handles streaming response and calls onProgress', async () => {
       const onProgress = jest.fn();
       createStreamResponse(['Hello ', 'World']);
@@ -202,10 +254,10 @@ describe('AIService', () => {
       });
 
       expect(result.summary).toBe('This paper introduces transformers');
-      expect(result.model).toBe('glm-4.7-flash');
+      expect(result.model).toBe('deepseek-chat');
     });
 
-    it('calculates cost with glm-4.7-flash', async () => {
+    it('calculates cost with the default provider model', async () => {
       mockJsonResponse('{"summary":"Test"}');
 
       await service.analyzePaper({
@@ -215,7 +267,7 @@ describe('AIService', () => {
       });
 
       expect(mockCostTracker.calculateCost).toHaveBeenCalledWith(
-        'glm-4.7-flash',
+        'deepseek-chat',
         expect.any(Object)
       );
     });
@@ -253,7 +305,195 @@ describe('AIService', () => {
       const result = (service as any).parseAnalysisResponse(response);
 
       expect(result.summary).toBe('Test summary');
-      expect(result.model).toBe('glm-4.7-flash');
+      expect(result.model).toBe('deepseek-chat');
+    });
+  });
+
+  describe('generateStructuredData', () => {
+    it('parses JSON wrapped in markdown code fences', async () => {
+      mockJsonResponse('```json\n{"caseTitle":"Test Case"}\n```');
+
+      const result = await service.generateStructuredData<{ caseTitle: string }>({
+        prompt: 'Return JSON',
+        maxTokens: 200,
+      });
+
+      expect(result).toEqual({ caseTitle: 'Test Case' });
+    });
+
+    it('parses the first balanced JSON object inside surrounding text', async () => {
+      mockJsonResponse('Here is the result:\n{"caseTitle":"Nested Case"}\nThank you.');
+
+      const result = await service.generateStructuredData<{ caseTitle: string }>({
+        prompt: 'Return JSON',
+        maxTokens: 200,
+      });
+
+      expect(result).toEqual({ caseTitle: 'Nested Case' });
+    });
+
+    it('repairs trailing commas in structured JSON responses', async () => {
+      mockJsonResponse('{"caseTitle":"Loose JSON","tasks":[1,2,],}');
+
+      const result = await service.generateStructuredData<{ caseTitle: string; tasks: number[] }>({
+        prompt: 'Return JSON',
+        maxTokens: 200,
+      });
+
+      expect(result).toEqual({
+        caseTitle: 'Loose JSON',
+        tasks: [1, 2],
+      });
+    });
+
+    it('surfaces a parse error when the response is not valid JSON', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'This is not JSON',
+                },
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'Still not JSON',
+                },
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'No JSON here either',
+                },
+              },
+            ],
+          }),
+        });
+
+      await expect(
+        service.generateStructuredData({
+          prompt: 'Return JSON',
+          maxTokens: 200,
+        })
+      ).rejects.toThrow('Structured AI response did not contain valid JSON');
+    });
+
+    it('repairs a non-JSON structured response on a second pass', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'The case title is Novelty Check. Tasks are below.',
+                },
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: '{"caseTitle":"Novelty Check"}',
+                },
+              },
+            ],
+          }),
+        });
+
+      const result = await service.generateStructuredData<{ caseTitle: string }>({
+        prompt: 'Return JSON',
+        maxTokens: 200,
+      });
+
+      expect(result).toEqual({ caseTitle: 'Novelty Check' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries the original task with a stricter JSON instruction after repair also fails', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'The answer is below, but not JSON.',
+                },
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: 'Still not JSON after repair.',
+                },
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({
+            choices: [
+              {
+                message: {
+                  content: '{"caseTitle":"Strict Retry Case"}',
+                },
+              },
+            ],
+          }),
+        });
+
+      const result = await service.generateStructuredData<{ caseTitle: string }>({
+        prompt: 'Return JSON',
+        maxTokens: 200,
+      });
+
+      expect(result).toEqual({ caseTitle: 'Strict Retry Case' });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('maps fetch failures to a network error', async () => {
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(
+        service.generateStructuredData({
+          prompt: 'Return JSON',
+          maxTokens: 200,
+        })
+      ).rejects.toThrow(/网络|network/i);
     });
   });
 

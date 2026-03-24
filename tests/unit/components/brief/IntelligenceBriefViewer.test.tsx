@@ -75,7 +75,7 @@ describe('IntelligenceBriefViewer', () => {
       regenerateBrief: jest.fn(),
     });
 
-    render(<IntelligenceBriefViewer paperId={142} />);
+    render(<IntelligenceBriefViewer paperId={142} mode="direct-brief" />);
 
     await userEvent.click(screen.getByRole('button', { name: '导出为 Markdown' }));
 
@@ -101,7 +101,7 @@ describe('IntelligenceBriefViewer', () => {
       regenerateBrief: jest.fn(),
     });
 
-    render(<IntelligenceBriefViewer paperId={142} />);
+    render(<IntelligenceBriefViewer paperId={142} mode="direct-brief" />);
 
     await userEvent.click(screen.getByRole('button', { name: '配置 API Key' }));
 
@@ -121,7 +121,7 @@ describe('IntelligenceBriefViewer', () => {
       regenerateBrief: jest.fn(),
     });
 
-    render(<IntelligenceBriefViewer paperId={142} />);
+    render(<IntelligenceBriefViewer paperId={142} mode="direct-brief" />);
 
     await userEvent.click(screen.getByRole('button', { name: '配置 API Key' }));
 
@@ -142,7 +142,7 @@ describe('IntelligenceBriefViewer', () => {
       regenerateBrief: jest.fn(),
     });
 
-    render(<IntelligenceBriefViewer paperId={142} />);
+    render(<IntelligenceBriefViewer paperId={142} mode="final-report" />);
 
     expect(screen.getByRole('heading', { name: 'Final Case Report Locked' })).toBeInTheDocument();
   });

@@ -192,6 +192,7 @@ describe('IntelligenceBriefService', () => {
       paperId: mockPaperId,
       pdfText: mockPDFText,
       highlights: mockHighlights,
+      apiKey: 'test-key',
     });
 
     expect(result.stage).toBe('success');
@@ -206,6 +207,7 @@ describe('IntelligenceBriefService', () => {
       paperId: mockPaperId,
       pdfText: mockPDFText,
       highlights: mockHighlights,
+      apiKey: 'test-key',
     });
 
     expect(result.brief.caseFile.title).toContain('The Baseline Dispute');
@@ -218,6 +220,7 @@ describe('IntelligenceBriefService', () => {
       paperId: mockPaperId,
       pdfText: mockPDFText,
       highlights: mockHighlights,
+      apiKey: 'test-key',
     });
 
     expect(result.brief.structuredInfo.limitations).toContain('Problem statement evidence.');
@@ -231,6 +234,7 @@ describe('IntelligenceBriefService', () => {
       paperId: mockPaperId,
       pdfText: mockPDFText,
       highlights: mockHighlights,
+      apiKey: 'test-key',
     });
 
     expect(result.stage).toBe('success');
@@ -246,14 +250,13 @@ describe('IntelligenceBriefService', () => {
       pdfText: mockPDFText,
       highlights: mockHighlights,
       forceRegenerate: true,
+      apiKey: 'test-key',
     });
 
     expect(mockAiService.generateClipSummary).toHaveBeenCalled();
   });
 
   it('returns an error stage when API is not configured', async () => {
-    mockAiService.isConfigured.mockReturnValue(false);
-
     const result = await intelligenceBriefService.generateBrief({
       paperId: mockPaperId,
       pdfText: mockPDFText,

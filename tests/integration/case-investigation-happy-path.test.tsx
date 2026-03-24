@@ -5,6 +5,7 @@ import Home from '@/app/page';
 import { dbHelpers } from '@/lib/db';
 import { extractPDFText } from '@/lib/pdf';
 import { usePaperStore } from '@/lib/store';
+import { getAPIKey, getActiveProviderConfig } from '@/services/apiKeyManager';
 import type { CaseSetup } from '@/types';
 
 jest.mock('@/hooks/useKeyboardShortcuts', () => ({
@@ -13,6 +14,18 @@ jest.mock('@/hooks/useKeyboardShortcuts', () => ({
 
 jest.mock('@/lib/pdf', () => ({
   extractPDFText: jest.fn(),
+}));
+
+jest.mock('@/services/apiKeyManager', () => ({
+  getAPIKey: jest.fn(),
+  getActiveProviderConfig: jest.fn(() => ({
+    id: 'deepseek',
+    label: 'DeepSeek',
+    apiUrl: 'https://api.deepseek.com/v1/chat/completions',
+    model: 'deepseek-chat',
+    models: ['deepseek-chat'],
+    helpLink: 'https://platform.deepseek.com/',
+  })),
 }));
 
 jest.mock('@/components/Header', () => ({
@@ -50,21 +63,7 @@ jest.mock('@/components/RealPDFViewer', () => ({
 
 jest.mock('@/components/DetectiveNotebook', () => ({
   __esModule: true,
-  default: () => (
-    <button
-      type="button"
-      onClick={async () => {
-        const store = usePaperStore.getState();
-        await store.submitEvidence('task-1', 101, 'claim', 'Problem claim evidence');
-        await store.submitEvidence('task-2', 102, 'comparison', 'Comparison evidence');
-        await store.submitEvidence('task-2', 103, 'method', 'Method evidence');
-        await store.submitEvidence('task-3', 104, 'result', 'Result evidence');
-        await store.submitEvidence('task-4', 105, 'limitation', 'Limitation evidence');
-      }}
-    >
-      Submit Core Evidence
-    </button>
-  ),
+  default: () => <div>Notebook</div>,
 }));
 
 jest.mock('@/components/brief/IntelligenceBriefViewer', () => ({
@@ -79,6 +78,9 @@ jest.mock('@/lib/db');
 
 const mockDbHelpers = dbHelpers as jest.Mocked<typeof dbHelpers>;
 const mockExtractPDFText = extractPDFText as jest.MockedFunction<typeof extractPDFText>;
+const mockGetAPIKey = getAPIKey as jest.MockedFunction<typeof getAPIKey>;
+const mockGetActiveProviderConfig =
+  getActiveProviderConfig as jest.MockedFunction<typeof getActiveProviderConfig>;
 
 const caseSetup: CaseSetup = {
   paperId: 1,
@@ -88,52 +90,23 @@ const caseSetup: CaseSetup = {
   openingJudgment: 'Initial evidence is incomplete.',
   investigationGoal: 'Verify the paper using direct text evidence.',
   structureNodes: [],
-  tasks: [
-    {
-      id: 'task-1',
-      title: 'Define the Case',
-      question: 'What problem does the paper claim to solve?',
-      narrativeHook: 'Start with the opening claim.',
-      linkedStructureKinds: ['intro'],
-      requiredEvidenceTypes: ['claim'],
-      minEvidenceCount: 1,
-      unlocksTaskIds: ['task-2'],
-      status: 'available',
-    },
-    {
-      id: 'task-2',
-      title: 'Identify the Real Innovation',
-      question: 'What is genuinely new compared with prior work?',
-      narrativeHook: 'Separate novelty from framing.',
-      linkedStructureKinds: ['related-work', 'method'],
-      requiredEvidenceTypes: ['comparison', 'method'],
-      minEvidenceCount: 2,
-      unlocksTaskIds: ['task-3'],
-      status: 'locked',
-    },
-    {
-      id: 'task-3',
-      title: 'Check Whether the Results Hold Up',
-      question: 'Do the experiments support the main claim?',
-      narrativeHook: 'Follow the evidence into the experiments.',
-      linkedStructureKinds: ['experiment', 'result'],
-      requiredEvidenceTypes: ['result'],
-      minEvidenceCount: 1,
-      unlocksTaskIds: ['task-4'],
-      status: 'locked',
-    },
-    {
-      id: 'task-4',
-      title: 'Find the Weak Point',
-      question: 'What limitation or unresolved risk remains?',
-      narrativeHook: 'Find the unresolved risk.',
-      linkedStructureKinds: ['discussion', 'limitation'],
-      requiredEvidenceTypes: ['limitation'],
-      minEvidenceCount: 1,
-      unlocksTaskIds: [],
-      status: 'locked',
-    },
-  ],
+  tasks: Array.from({ length: 10 }, (_, index) => ({
+    id: `task-${index + 1}`,
+    title: `Investigation Task ${index + 1}`,
+    question: `Question ${index + 1}?`,
+    narrativeHook: `Hook ${index + 1}`,
+    section: 'intro',
+    whereToLook: ['Introduction'],
+    whatToFind: `Evidence ${index + 1}`,
+    submissionMode: 'evidence_only',
+    recommendedEvidenceCount: 1,
+    evaluationFocus: 'coverage',
+    linkedStructureKinds: ['intro'],
+    requiredEvidenceTypes: ['claim'],
+    minEvidenceCount: 1,
+    unlocksTaskIds: index < 9 ? [`task-${index + 2}`] : [],
+    status: index === 0 ? 'available' : 'locked',
+  })),
   generatedAt: '2026-03-17T00:00:00.000Z',
   model: 'glm-4.7-flash',
   source: 'ai-generated',
@@ -144,10 +117,10 @@ describe('case investigation happy path', () => {
     jest.clearAllMocks();
     usePaperStore.setState({
       currentPaper: null,
-      caseSetup: null,
-      investigationTasks: [],
+      caseSetup,
+      investigationTasks: caseSetup.tasks,
       evidenceSubmissions: [],
-      activeTaskId: null,
+      activeTaskId: 'task-1',
       investigationPhase: 'setup',
       highlights: [],
       groups: [],
@@ -169,39 +142,58 @@ describe('case investigation happy path', () => {
     mockDbHelpers.getCaseSetup
       .mockResolvedValueOnce(undefined)
       .mockResolvedValue(caseSetup);
-    mockDbHelpers.addEvidenceSubmission
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(4)
-      .mockResolvedValueOnce(5);
+    mockDbHelpers.addEvidenceSubmission.mockImplementation(async () => Date.now());
     mockExtractPDFText.mockResolvedValue('Paper body text');
+    mockGetAPIKey.mockReturnValue('test-bigmodel-key');
+    mockGetActiveProviderConfig.mockReturnValue({
+      id: 'deepseek',
+      label: 'DeepSeek',
+      apiUrl: 'https://api.deepseek.com/v1/chat/completions',
+      model: 'deepseek-chat',
+      models: ['deepseek-chat'],
+      helpLink: 'https://platform.deepseek.com/',
+    });
 
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, data: caseSetup }),
+      json: async () => ({
+        success: true,
+        data: caseSetup,
+      }),
     } as Response);
   });
 
-  it('uploads a paper, generates case setup, completes tasks, and unlocks the final report', async () => {
+  it('uploads a paper, keeps the report locked below threshold, and unlocks it at threshold', async () => {
     render(<Home />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Upload PDF' }));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        '/api/ai/case-setup',
-        expect.objectContaining({ method: 'POST' })
-      );
       expect(screen.getByRole('heading', { name: 'The Baseline Dispute' })).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole('button', { name: 'Start Briefing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enter Notebook' }));
     fireEvent.click(screen.getByRole('button', { name: 'Begin Investigation' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Submit Core Evidence' }));
     fireEvent.click(screen.getByRole('button', { name: 'Toggle Mode' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Final Report Locked')).toBeInTheDocument();
+    });
+
+    await actCompleteThreshold();
 
     await waitFor(() => {
       expect(screen.getByText('Final Report Ready')).toBeInTheDocument();
     });
   });
 });
+
+async function actCompleteThreshold() {
+  const store = usePaperStore.getState();
+
+  for (let index = 1; index <= 10; index += 1) {
+    const taskId = `task-${index}`;
+    await store.submitEvidence(taskId, 100 + index, 'claim', `Evidence for ${taskId}`);
+  }
+}

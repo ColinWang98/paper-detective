@@ -6,14 +6,7 @@ jest.mock('@/services/intelligenceBriefService', () => ({
   },
 }));
 
-jest.mock('@/services/aiService', () => ({
-  aiService: {
-    isConfigured: jest.fn(),
-  },
-}));
-
 import { DELETE, GET, POST } from '@/app/api/ai/intelligence-brief/route';
-import { aiService } from '@/services/aiService';
 import type { IntelligenceBrief } from '@/services/intelligenceBriefService';
 import { intelligenceBriefService } from '@/services/intelligenceBriefService';
 import { NextRequest } from '@/tests/__mocks__/next';
@@ -21,9 +14,6 @@ import { NextRequest } from '@/tests/__mocks__/next';
 const mockIntelligenceBriefService = intelligenceBriefService as jest.Mocked<
   typeof intelligenceBriefService
 >;
-const mockAiService = aiService as unknown as {
-  isConfigured: jest.Mock<boolean, []>;
-};
 
 function makeRequest(url: string, init?: { method?: string; body?: string }) {
   return new NextRequest(url, init) as unknown as Parameters<typeof POST>[0];
@@ -85,7 +75,6 @@ describe('/api/ai/intelligence-brief', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockAiService.isConfigured.mockReturnValue(true);
   });
 
   describe('POST', () => {
@@ -102,6 +91,7 @@ describe('/api/ai/intelligence-brief', () => {
           paperId: mockPaperId,
           pdfText: mockPDFText,
           highlights: mockHighlights,
+          apiKey: 'test-key',
         }),
       });
 
@@ -116,6 +106,7 @@ describe('/api/ai/intelligence-brief', () => {
         pdfText: mockPDFText,
         highlights: mockHighlights,
         forceRegenerate: false,
+        apiKey: 'test-key',
         onProgress: expect.any(Function),
       });
     });
@@ -135,8 +126,12 @@ describe('/api/ai/intelligence-brief', () => {
       });
     });
 
-    it('rejects when API key is not configured', async () => {
-      mockAiService.isConfigured.mockReturnValue(false);
+    it('passes through requests without an API key and returns service errors', async () => {
+      mockIntelligenceBriefService.generateBrief.mockResolvedValue({
+        brief: createMockBrief(mockPaperId),
+        stage: 'error',
+        error: '请先在设置中配置API Key',
+      });
 
       const request = makeRequest('http://localhost:3000/api/ai/intelligence-brief', {
         method: 'POST',
@@ -148,7 +143,8 @@ describe('/api/ai/intelligence-brief', () => {
       });
 
       await expect(POST(request)).rejects.toMatchObject({
-        code: 'API_KEY_MISSING',
+        code: 'BRIEF_GENERATION_ERROR',
+        message: '请先在设置中配置API Key',
       });
     });
 
@@ -216,16 +212,17 @@ describe('/api/ai/intelligence-brief', () => {
       });
     });
 
-    it('rejects when API key is not configured', async () => {
-      mockAiService.isConfigured.mockReturnValue(false);
-
+    it('loads cached briefs without requiring an API key', async () => {
+      mockIntelligenceBriefService.getBrief.mockResolvedValue(null);
       const request = makeRequest(
         `http://localhost:3000/api/ai/intelligence-brief?paperId=${mockPaperId}`
       );
 
-      await expect(GET(request)).rejects.toMatchObject({
-        code: 'API_KEY_MISSING',
-      });
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toBeNull();
     });
   });
 

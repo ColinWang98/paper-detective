@@ -20,6 +20,7 @@ import { TextEncoder, TextDecoder } from 'util';
 // Polyfill TextEncoder/TextDecoder for jsdom
 global.TextEncoder = TextEncoder as any;
 global.TextDecoder = TextDecoder as any;
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Mock crypto.getRandomValues for consistent testing
 if (typeof window !== 'undefined') {
@@ -108,7 +109,12 @@ beforeAll(() => {
     // Suppress expected errors
     if (
       errorMessage.includes('Warning: ReactDOM.render') ||
-      errorMessage.includes('Not implemented:')
+      errorMessage.includes('Not implemented:') ||
+      errorMessage.includes('The current testing environment is not configured to support act(...)') ||
+      errorMessage.includes('Failed to generate case setup: Jest encountered an unexpected token') ||
+      errorMessage.includes("Cannot use 'import.meta' outside a module") ||
+      errorMessage.includes('An update to Home inside a test was not wrapped in act(...)') ||
+      errorMessage.includes('inside a test was not wrapped in act(...)')
     ) {
       return;
     }

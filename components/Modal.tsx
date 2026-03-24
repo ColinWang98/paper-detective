@@ -63,7 +63,6 @@ export function Modal({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'unset';
-      onClose?.();
     };
   }, [isOpen, handleKeyDown]);
 

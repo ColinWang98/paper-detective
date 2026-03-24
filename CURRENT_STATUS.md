@@ -1,59 +1,67 @@
 # Current Project Status
 
-Verified on `2026-03-17`.
+Verified on `2026-03-20`.
 
 ## Source Of Truth
 
 - Active application root: `paper-detective/`
 - Current app version: `0.2.0`
 - Active runtime: `Next.js 15`, `React 19`, `TypeScript 5`
-- Primary architecture sources:
-  - `package.json`
-  - `app/`
-  - `components/`
-  - `lib/`
-  - `services/`
 
 ## Current Phase
 
-The dual-layer investigation MVP is now implemented and verified at the focused-suite level.
+The project is no longer in pre-implementation design. The current state is:
 
-Current priority order:
+- `A Mode` detective investigation MVP implemented
+- `B Mode` direct AI brief flow implemented
+- engineering baseline restored and verified
 
-1. Keep `npm run type-check`, `npm run type-check:tests`, and `npm run build` green
-2. Expand focused integration coverage around upload, setup generation, evidence submission, and report unlock
-3. Tighten the investigation layout so structure tree, task board, and report flow feel cohesive in the live UI
-4. Run a broader regression pass before release packaging
+This is now a `MVP verification and refinement` phase, not a planning-only phase.
 
-## Delivered Direction
+## Implemented Product Flow
 
-The app now supports the planned dual-layer investigation loop:
+- PDF upload enters `setup`
+- AI generates a `Case Setup` with structure nodes and a clickable question map
+- onboarding now includes:
+  - welcome modal with player name
+  - tutorial modal
+- `A Mode` uses a notebook-style right panel with:
+  - `Questions`
+  - `Evidence Box`
+  - `Progress`
+- evidence submission binds to the active question
+- each question can be submitted for AI scoring and feedback
+- the final case report unlocks after the completed-question threshold is reached
+- `B Mode` is now a direct AI brief flow and no longer depends on investigation progress
 
-- PDF upload enters a `setup` phase and triggers `Case Setup` generation
-- case framing, structure nodes, and 4 deterministic investigation tasks persist by `paperId`
-- highlights can be submitted as task evidence
-- task completion unlocks downstream tasks
-- the final report stays locked until all 4 core tasks complete, then the flow enters `report`
-
-## Current Baseline
-
-- `npm run type-check` passes
-- `npm run type-check:tests` passes
-- `npm run build` passes
-- Focused Jest verification passes for case setup, evidence submission, final report locking, and the browserless investigation happy path
-
-## Remaining Risks
-
-- Full Jest suite has not been run end-to-end in this session.
-- The live investigation layout still needs broader manual UX review, especially around structure-tree visibility and report-mode transitions.
-- Historical docs in the repository still describe older milestones and should not be treated as the current release state.
-
-## Release Gate
-
-The current MVP snapshot should not be treated as release-ready until all of the following are true:
+## Verified Baseline
 
 - `npm run type-check` passes
 - `npm run type-check:tests` passes
 - `npm run build` passes
-- focused Jest suites pass with `--runInBand`
-- one manual upload -> setup -> evidence -> report walkthrough is recorded
+- `npm test -- --runInBand` passes
+
+Latest full Jest result:
+
+- `41/41` suites passed
+- `295/295` tests passed
+
+## Notes On Verification
+
+- Full Jest still prints two expected `console.error` lines from the case-setup missing-key failure-path tests.
+- Next.js build succeeds; the remaining webpack cache warnings shown during build are non-blocking cache restore warnings, not build failures.
+
+## Current Risks
+
+- AI-generated investigation questions are still not consistently paper-specific enough; fallback questions are usable but not strong product output.
+- PDF evidence capture still depends on text-layer quality; manual cleanup helps, but OCR/region capture does not exist yet.
+- Manual gameplay validation is still needed across multiple real papers.
+- Some repository docs still describe older milestones and should not be treated as current.
+
+## Next Recommended Phase
+
+1. Manual acceptance run:
+   upload PDF -> complete several questions -> unlock final report -> compare against B mode brief
+2. Improve task generation quality so investigation prompts are tightly grounded in each paper
+3. Improve PDF evidence capture with region-based selection and OCR fallback
+4. Update remaining historical docs to match the current A/B mode architecture

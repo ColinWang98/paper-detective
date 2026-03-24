@@ -54,7 +54,30 @@ describe('evidence submission flow', () => {
       question: 'What problem does the paper claim to solve?',
       narrativeHook: 'Start with the opening claim.',
       linkedStructureKinds: ['intro'],
+      section: 'intro',
+      whereToLook: ['Introduction'],
+      whatToFind: 'Problem statement',
+      submissionMode: 'evidence_only',
+      recommendedEvidenceCount: 1,
+      evaluationFocus: 'claim precision',
       requiredEvidenceTypes: ['claim'],
+      minEvidenceCount: 1,
+      unlocksTaskIds: ['task-2'],
+      status: 'available',
+    },
+    {
+      id: 'task-2',
+      title: 'Check the Result Support',
+      question: 'What experimental evidence supports the claim?',
+      narrativeHook: 'Go to the results section.',
+      linkedStructureKinds: ['result'],
+      section: 'result',
+      whereToLook: ['Results'],
+      whatToFind: 'Result evidence',
+      submissionMode: 'evidence_plus_optional_judgment',
+      recommendedEvidenceCount: 1,
+      evaluationFocus: 'evidence coverage',
+      requiredEvidenceTypes: ['result'],
       minEvidenceCount: 1,
       unlocksTaskIds: [],
       status: 'available',
@@ -64,6 +87,7 @@ describe('evidence submission flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDbHelpers.addEvidenceSubmission.mockResolvedValue(1);
+    mockDbHelpers.updateEvidenceSubmission.mockResolvedValue(1);
 
     usePaperStore.setState({
       currentPaper: {
@@ -90,10 +114,12 @@ describe('evidence submission flow', () => {
       expandedGroups: new Set([1]),
       investigationTasks: tasks,
       evidenceSubmissions: [],
+      deductionGraphs: [],
+      activeTaskId: 'task-2',
     });
   });
 
-  it('opens evidence submission flow and persists evidence under the task', async () => {
+  it('defaults evidence submission to the active task and shows current-task evidence in notes', async () => {
     render(
       <DetectiveNotebook
         pendingEvidenceHighlight={highlight}
@@ -101,9 +127,14 @@ describe('evidence submission flow', () => {
       />
     );
 
+    expect(screen.getByRole('combobox', { name: 'Task' })).toHaveValue('task-2');
+
     await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Evidence Type' }), {
+        target: { value: 'result' },
+      });
       fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
-        target: { value: 'This line contains the measurable improvement claim.' },
+        target: { value: 'This line contains the measurable improvement result.' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save Evidence' }));
     });
@@ -111,16 +142,124 @@ describe('evidence submission flow', () => {
     await waitFor(() => {
       expect(mockDbHelpers.addEvidenceSubmission).toHaveBeenCalledWith(
         expect.objectContaining({
-          taskId: 'task-1',
+          taskId: 'task-2',
           highlightId: 77,
-          note: 'This line contains the measurable improvement claim.',
+          note: 'This line contains the measurable improvement result.',
         })
       );
     });
 
-    const taskEvidenceCard = screen.getAllByText('Define the Case')[0]?.closest('div');
-    expect(taskEvidenceCard).toHaveTextContent(
-      'claim: This line contains the measurable improvement claim.'
-    );
+    expect(usePaperStore.getState().groups[0]?.items).toEqual([]);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+
+    expect(screen.getByRole('heading', { name: 'Check the Result Support' })).toBeInTheDocument();
+    expect(document.body).toHaveTextContent('This line contains the measurable improvement result.');
+    expect(screen.queryByRole('heading', { name: 'Define the Case' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Collection Bin')).not.toBeInTheDocument();
+  });
+
+  it('assigns the current question evidence into a cluster from the notes tab', async () => {
+    usePaperStore.setState({
+      currentPaper: {
+        id: 1,
+        title: 'Test Paper',
+        authors: [],
+        year: 2026,
+        fileURL: '',
+        fileName: 'paper.pdf',
+        uploadDate: '2026-03-17T00:00:00.000Z',
+      },
+      groups: [],
+      expandedGroups: new Set<number>(),
+      investigationTasks: tasks,
+      evidenceSubmissions: [
+        {
+          id: 2,
+          paperId: 1,
+          taskId: 'task-2',
+          highlightId: 77,
+          evidenceType: 'result',
+          note: 'This line contains the measurable improvement result.',
+          createdAt: '2026-03-17T00:00:00.000Z',
+        },
+      ],
+      deductionGraphs: [],
+      highlights: [highlight],
+      activeTaskId: 'task-2',
+    });
+
+    render(<DetectiveNotebook />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Supports Claim' }));
+
+    await waitFor(() => {
+      expect(mockDbHelpers.updateEvidenceSubmission).toHaveBeenCalledWith(2, {
+        clusterId: 'supports-claim',
+      });
+    });
+
+    expect(usePaperStore.getState().evidenceSubmissions[0]?.clusterId).toBe('supports-claim');
+  });
+
+  it('updates bubble tags from the clusters tab', async () => {
+    mockDbHelpers.updateEvidenceSubmission.mockResolvedValue(1);
+
+    usePaperStore.setState({
+      currentPaper: {
+        id: 1,
+        title: 'Test Paper',
+        authors: [],
+        year: 2026,
+        fileURL: '',
+        fileName: 'paper.pdf',
+        uploadDate: '2026-03-17T00:00:00.000Z',
+      },
+      groups: [],
+      expandedGroups: new Set<number>(),
+      investigationTasks: tasks,
+      evidenceSubmissions: [
+        {
+          id: 3,
+          paperId: 1,
+          taskId: 'task-2',
+          highlightId: 77,
+          evidenceType: 'result',
+          note: 'This line contains the measurable improvement result.',
+          aiTags: ['result'],
+          createdAt: '2026-03-17T00:00:00.000Z',
+        },
+      ],
+      deductionGraphs: [],
+      highlights: [highlight],
+      activeTaskId: 'task-2',
+    });
+
+    render(<DetectiveNotebook />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+    const input = screen.getByRole('textbox', { name: 'Bubble tags 3' });
+    fireEvent.change(input, {
+      target: { value: 'benchmark' },
+    });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    fireEvent.change(input, {
+      target: { value: 'support' },
+    });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Tags 3' }));
+
+    await waitFor(() => {
+      expect(mockDbHelpers.updateEvidenceSubmission).toHaveBeenCalledWith(3, {
+        aiTags: ['result', 'benchmark', 'support'],
+      });
+    });
+
+    expect(usePaperStore.getState().evidenceSubmissions[0]?.aiTags).toEqual([
+      'result',
+      'benchmark',
+      'support',
+    ]);
   });
 });

@@ -18,13 +18,11 @@ import {
   withErrorHandler,
   success,
   ValidationError,
-  AuthenticationError,
   AIError,
 } from '@/lib/api/response';
 import { intelligenceBriefService } from '@/services/intelligenceBriefService';
-import { aiService } from '@/services/aiService';
 import type { Highlight } from '@/types';
-import type { GenerateBriefOptions } from '@/types/ai.types';
+import type { AIModel, GenerateBriefOptions } from '@/types/ai.types';
 
 const MAX_PDF_LENGTH = 500000; // 500K characters
 
@@ -33,6 +31,8 @@ interface BriefRequestBody {
   pdfText: string;
   highlights?: Highlight[];
   forceRegenerate?: boolean;
+  apiKey?: string;
+  model?: AIModel;
 }
 
 /**
@@ -74,12 +74,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
   const body = await request.json();
   validateBriefBody(body);
 
-  const { paperId, pdfText, highlights = [], forceRegenerate = false } = body;
-
-  // Check if AI service is configured
-  if (!aiService.isConfigured()) {
-    throw AuthenticationError.apiKeyMissing();
-  }
+  const { paperId, pdfText, highlights = [], forceRegenerate = false, apiKey, model } = body as BriefRequestBody;
 
   // Generate intelligence brief
   const options: GenerateBriefOptions = {
@@ -87,6 +82,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     pdfText,
     highlights,
     forceRegenerate,
+    apiKey,
+    model,
     onProgress: () => {
       // TODO: Implement server-sent events for streaming progress
     },
@@ -122,11 +119,6 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const paperIdNum = parseInt(paperId, 10);
   if (isNaN(paperIdNum)) {
     throw ValidationError.forField('paperId', 'paperId must be a valid number');
-  }
-
-  // Check if AI service is configured
-  if (!aiService.isConfigured()) {
-    throw AuthenticationError.apiKeyMissing();
   }
 
   // Get cached brief
