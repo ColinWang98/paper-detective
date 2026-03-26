@@ -41,6 +41,8 @@ export type {
 
 export type {
   CaseSetup,
+  DoctorMode,
+  DoctorState,
   DeductionGraph,
   DeductionGraphEdge,
   DeductionGraphNode,
@@ -57,6 +59,11 @@ export type {
   PaperStructureKind,
   PaperStructureNode,
   PaperStructureStatus,
+  QuestionNode,
+  QuestionNodeStatus,
+  QuestionNodeType,
+  QuestionRelation,
+  QuestionRelationType,
   QuestionSection,
   TaskSubmissionMode,
   TaskProgress,

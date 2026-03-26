@@ -6,6 +6,7 @@ import type {
   AIClueCard,
   CaseSetup,
   DeductionGraph,
+  DoctorState,
   EvidenceRelationship,
   EvidenceSubmission,
   Group,
@@ -13,6 +14,8 @@ import type {
   Highlight,
   IntelligenceBrief,
   Paper,
+  QuestionNode,
+  QuestionRelation,
 } from '@/types';
 
 export class PaperDetectiveDB extends Dexie {
@@ -27,6 +30,9 @@ export class PaperDetectiveDB extends Dexie {
   evidenceSubmissions!: Table<EvidenceSubmission>;
   evidenceRelationships!: Table<EvidenceRelationship>;
   deductionGraphs!: Table<DeductionGraph>;
+  questionNodes!: Table<QuestionNode>;
+  questionRelations!: Table<QuestionRelation>;
+  doctorStates!: Table<DoctorState>;
 
   constructor() {
     super('PaperDetectiveDB');
@@ -79,6 +85,13 @@ export class PaperDetectiveDB extends Dexie {
     // Version 7: Persist React Flow graph nodes + edges by task
     this.version(7).stores({
       deductionGraphs: '++id, paperId, taskId, [paperId+taskId], updatedAt',
+    });
+
+    // Version 8: Persist question-centered investigation state
+    this.version(8).stores({
+      questionNodes: 'id, paperId, type, status, parentQuestionId',
+      questionRelations: 'id, paperId, sourceQuestionId, targetQuestionId, relationType, createdAt',
+      doctorStates: 'paperId, activeQuestionId, mode, updatedAt',
     });
   }
 }
@@ -173,6 +186,9 @@ export const dbHelpers = {
         db.evidenceSubmissions,
         db.evidenceRelationships,
         db.deductionGraphs,
+        db.questionNodes,
+        db.questionRelations,
+        db.doctorStates,
       ],
       async () => {
       // Delete all highlights for this paper
@@ -217,6 +233,14 @@ export const dbHelpers = {
       // Delete deduction graphs
       const deductionGraphs = await db.deductionGraphs.where('paperId').equals(id).toArray();
       await db.deductionGraphs.bulkDelete(deductionGraphs.map((graph) => graph.id!));
+
+      const questionNodes = await db.questionNodes.where('paperId').equals(id).toArray();
+      await db.questionNodes.bulkDelete(questionNodes.map((node) => node.id));
+
+      const questionRelations = await db.questionRelations.where('paperId').equals(id).toArray();
+      await db.questionRelations.bulkDelete(questionRelations.map((relation) => relation.id));
+
+      await db.doctorStates.where('paperId').equals(id).delete();
 
       // Finally delete the paper
       await db.papers.delete(id);
@@ -506,6 +530,40 @@ export const dbHelpers = {
 
   async deleteDeductionGraphsByPaper(paperId: number): Promise<void> {
     await db.deductionGraphs.where('paperId').equals(paperId).delete();
+  },
+
+  async saveQuestionNodes(paperId: number, questionNodes: QuestionNode[]): Promise<void> {
+    await db.transaction('rw', [db.questionNodes], async () => {
+      await db.questionNodes.where('paperId').equals(paperId).delete();
+      if (questionNodes.length > 0) {
+        await db.questionNodes.bulkPut(questionNodes);
+      }
+    });
+  },
+
+  async getQuestionNodes(paperId: number): Promise<QuestionNode[]> {
+    return await db.questionNodes.where('paperId').equals(paperId).toArray();
+  },
+
+  async saveQuestionRelations(paperId: number, questionRelations: QuestionRelation[]): Promise<void> {
+    await db.transaction('rw', [db.questionRelations], async () => {
+      await db.questionRelations.where('paperId').equals(paperId).delete();
+      if (questionRelations.length > 0) {
+        await db.questionRelations.bulkPut(questionRelations);
+      }
+    });
+  },
+
+  async getQuestionRelations(paperId: number): Promise<QuestionRelation[]> {
+    return await db.questionRelations.where('paperId').equals(paperId).sortBy('createdAt');
+  },
+
+  async saveDoctorState(doctorState: DoctorState): Promise<number> {
+    return await db.doctorStates.put(doctorState);
+  },
+
+  async getDoctorState(paperId: number): Promise<DoctorState | undefined> {
+    return await db.doctorStates.get(paperId);
   },
 
   // Reorder highlights within a group

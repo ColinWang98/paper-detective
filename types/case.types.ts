@@ -31,6 +31,54 @@ export type TaskSubmissionMode = 'evidence_only' | 'evidence_plus_optional_judgm
 export type EvidenceClusterId = 'supports-claim' | 'needs-skepticism' | 'open-thread';
 export type EvidenceRelationshipType = 'supports' | 'contradicts' | 'extends' | 'open-question';
 export type DeductionRelationType = 'support' | 'contrast' | 'method' | 'limitation';
+export type QuestionNodeType = 'claim' | 'evidence' | 'method' | 'limitation';
+export type QuestionNodeStatus = 'open' | 'partial' | 'supported' | 'conflicted' | 'limited';
+export type QuestionRelationType = 'support' | 'contrast' | 'method-for' | 'limitation-of';
+export type DoctorMode =
+  | 'skeptical'
+  | 'checking'
+  | 'partial-confirmation'
+  | 'strong-support'
+  | 'conflict-found'
+  | 'insufficient-evidence'
+  | 'limitation-found'
+  | 'diagnosis-complete';
+
+export interface QuestionNode {
+  id: string;
+  paperId: number;
+  title: string;
+  prompt: string;
+  type: QuestionNodeType;
+  status: QuestionNodeStatus;
+  parentQuestionId: string | null;
+  dependsOnQuestionIds: string[];
+  assignedEvidenceIds: number[];
+  position: {
+    x: number;
+    y: number;
+  };
+  score?: number;
+  feedback?: string;
+}
+
+export interface QuestionRelation {
+  id: string;
+  paperId: number;
+  sourceQuestionId: string;
+  targetQuestionId: string;
+  relationType: QuestionRelationType;
+  note?: string;
+  createdAt: string;
+}
+
+export interface DoctorState {
+  paperId: number;
+  activeQuestionId: string | null;
+  mode: DoctorMode;
+  message: string;
+  updatedAt: string;
+}
 
 export interface InvestigationTask {
   id: string;
@@ -144,6 +192,9 @@ export interface CaseSetup {
   investigationGoal: string;
   structureNodes: PaperStructureNode[];
   tasks: InvestigationTask[];
+  questionNodes: QuestionNode[];
+  questionRelations: QuestionRelation[];
+  doctorState: DoctorState;
   generatedAt: string;
   model: AIModel;
   source: 'ai-generated' | 'cache';

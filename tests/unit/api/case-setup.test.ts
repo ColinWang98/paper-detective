@@ -25,6 +25,28 @@ describe('/api/ai/case-setup', () => {
     investigationGoal: 'Verify the paper using direct text evidence.',
     structureNodes: [],
     tasks: [],
+    questionNodes: [
+      {
+        id: 'claim-q1',
+        paperId: 1,
+        title: 'What is the core claim?',
+        prompt: 'Lock the central claim first.',
+        type: 'claim',
+        status: 'open',
+        parentQuestionId: null,
+        dependsOnQuestionIds: [],
+        assignedEvidenceIds: [],
+        position: { x: 120, y: 120 },
+      },
+    ],
+    questionRelations: [],
+    doctorState: {
+      paperId: 1,
+      activeQuestionId: 'claim-q1',
+      mode: 'skeptical',
+      message: 'The claim still needs direct evidence.',
+      updatedAt: '2026-03-26T00:00:00.000Z',
+    },
     generatedAt: '2026-03-17T00:00:00.000Z',
     model: 'glm-4.7-flash' as const,
     source: 'ai-generated' as const,
@@ -51,6 +73,8 @@ describe('/api/ai/case-setup', () => {
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.data).toEqual(mockCaseSetup);
+    expect(data.data.questionNodes).toHaveLength(1);
+    expect(data.data.doctorState.mode).toBe('skeptical');
     expect(mockCaseSetupService.generateCaseSetup).toHaveBeenCalledWith({
       paperId: 1,
       pdfText: 'Paper body',

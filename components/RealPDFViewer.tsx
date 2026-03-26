@@ -12,6 +12,13 @@ import { PRIORITY_COLOR_MAP, type Highlight, type HighlightColor, type Highlight
 import { HighlightOverlay } from './HighlightOverlay';
 import PriorityLegend from './PriorityLegend';
 
+const PRIORITY_TEXT: Record<HighlightPriority, string> = {
+  critical: '关键',
+  important: '重要',
+  interesting: '有趣',
+  archived: '存档',
+};
+
 function normalizeSelectionText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
@@ -82,7 +89,14 @@ interface RealPDFViewerProps {
 
 export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvidenceRequest }: RealPDFViewerProps) {
   // Zustand store
-  const { currentPaper, addHighlight, highlights, selectedPriority, setSelectedPriority } = usePaperStore();
+  const {
+    currentPaper,
+    addHighlight,
+    highlights,
+    evidenceSubmissions,
+    selectedPriority,
+    setSelectedPriority,
+  } = usePaperStore();
 
   // PDF state
   const [pdfFile, setPdfFile] = useState<string | null>(null);
@@ -96,8 +110,14 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
   const [selectionRange, setSelectionRange] = useState<any>(null);
   const [selectionDraftText, setSelectionDraftText] = useState<string>('');
   const [_highlightAreas, setHighlightAreas] = useState<Map<number, any[]>>(new Map());
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageOverlayRef = useRef<HTMLDivElement>(null);
+  const submittedHighlightIds = new Set(
+    evidenceSubmissions
+      .map((submission) => submission.highlightId)
+      .filter((highlightId): highlightId is number => typeof highlightId === 'number')
+  );
 
   // Initialize database on mount
   useEffect(() => {
@@ -312,6 +332,26 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
     };
   }, [pdfFile]);
 
+  const handlePageMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!pageOverlayRef.current) {
+      return;
+    }
+
+    const rect = pageOverlayRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+
+    setFocusPoint({
+      x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100)),
+    });
+  }, []);
+
+  const handlePageMouseLeave = useCallback(() => {
+    setFocusPoint(null);
+  }, []);
+
   // Close PDF
   const closePDF = () => {
     // Revoke object URL to prevent memory leak
@@ -325,6 +365,7 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
     setHighlightAreas(new Map());
     setSelectionRange(null);
     setSelectionDraftText('');
+    setFocusPoint(null);
     onPdfFileChange?.(null);
   };
 
@@ -422,9 +463,9 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
 
           {/* Priority selector (HCI-compliant) */}
           {pdfFile && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                {priorities.map((priority) => (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {priorities.map((priority) => (
                   <button
                     key={priority.name}
                     onClick={() => setSelectedPriority(priority.name)}
@@ -438,8 +479,11 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
                   >
                     {priority.label}
                   </button>
-                ))}
-              </div>
+                  ))}
+                </div>
+              <span className="text-xs font-semibold text-newspaper-faded">
+                当前优先级：{PRIORITY_TEXT[selectedPriority]}
+              </span>
               <PriorityLegend />
             </div>
           )}
@@ -470,11 +514,17 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
         ) : (
           /* PDF rendering */
           <div className="flex justify-center relative">
-            <div ref={pageOverlayRef} className="relative inline-block">
+            <div
+              ref={pageOverlayRef}
+              data-testid="pdf-page-hotspot"
+              className="relative inline-block"
+              onMouseMove={handlePageMouseMove}
+              onMouseLeave={handlePageMouseLeave}
+            >
             <Document
               file={pdfFile}
               onLoadSuccess={onDocumentLoadSuccess}
-              className="shadow-paper"
+              className="shadow-paper transition-[filter] duration-200"
               loading={
                 <div className="flex items-center justify-center p-12">
                   <div className="text-newspaper-faxed">加载中...</div>
@@ -488,6 +538,7 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
               }
             >
               <Page
+                key={`${currentPage}-${Math.round(scale * 100)}-${pageWidth}`}
                 pageNumber={currentPage}
                 renderTextLayer={true}
                 renderAnnotationLayer={false}
@@ -495,7 +546,22 @@ export default function RealPDFViewer({ _onHighlightAdd, onPdfFileChange, onEvid
                 width={Math.floor(pageWidth * scale)}
               />
             </Document>
-            <HighlightOverlay highlights={highlights} currentPage={currentPage} />
+            <div
+              data-testid="reading-focus-overlay"
+              className="pointer-events-none absolute inset-0 rounded-sm transition-all duration-150"
+              style={{
+                opacity: 1,
+                background: focusPoint
+                  ? `radial-gradient(circle at ${focusPoint.x}% ${focusPoint.y}%, rgba(255,248,236,0.04) 0%, rgba(255,248,236,0.08) 12%, rgba(210,197,177,0.18) 24%, rgba(145,124,95,0.3) 48%, rgba(95,75,50,0.42) 100%)`
+                  : 'linear-gradient(rgba(95,75,50,0.24), rgba(95,75,50,0.24))',
+                backdropFilter: focusPoint ? 'blur(1.6px) saturate(0.92)' : 'blur(2.4px) saturate(0.88)',
+              }}
+            />
+            <HighlightOverlay
+              highlights={highlights}
+              currentPage={currentPage}
+              submittedHighlightIds={submittedHighlightIds}
+            />
             </div>
 
             {/* Highlight selection popup */}

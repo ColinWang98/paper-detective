@@ -16,68 +16,58 @@ import {
   applyNodeChanges,
   type Edge,
   type Node,
-  type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
 } from '@xyflow/react';
 
 import type {
-  DeductionGraph,
-  DeductionGraphEdge,
-  DeductionGraphNode,
-  DeductionRelationType,
   EvidenceSubmission,
-  Highlight,
-  InvestigationTask,
+  QuestionNode,
+  QuestionRelation,
+  QuestionRelationType,
 } from '@/types';
 
 interface GraphTabProps {
-  activeTask: InvestigationTask | null;
+  paperId: number;
+  questionNodes: QuestionNode[];
+  questionRelations: QuestionRelation[];
   evidenceSubmissions: EvidenceSubmission[];
-  highlights: Highlight[];
-  graph: DeductionGraph | null;
-  onSaveGraph: (taskId: string, nodes: DeductionGraphNode[], edges: DeductionGraphEdge[]) => void;
+  activeQuestionId: string | null;
+  onSelectQuestion: (questionId: string) => void;
+  onSaveQuestionGraph: (questionNodes: QuestionNode[], questionRelations: QuestionRelation[]) => void;
 }
 
-const RELATIONSHIP_OPTIONS: Array<{ value: DeductionRelationType; label: string }> = [
+interface QuestionBubbleData extends Record<string, unknown> {
+  title: string;
+  type: QuestionNode['type'];
+  status: QuestionNode['status'];
+  evidenceCount: number;
+}
+
+const RELATIONSHIP_OPTIONS: Array<{ value: QuestionRelationType; label: string }> = [
   { value: 'support', label: 'Support' },
   { value: 'contrast', label: 'Contrast' },
-  { value: 'method', label: 'Method' },
-  { value: 'limitation', label: 'Limitation' },
+  { value: 'method-for', label: 'Method For' },
+  { value: 'limitation-of', label: 'Limitation Of' },
 ];
 
-const AUTO_LINK_DISTANCE = 160;
-
-type EvidenceBubbleNodeData = DeductionGraphNode['data'];
-
 const nodeTypes = {
-  evidenceBubble: EvidenceBubbleNode,
+  questionBubble: QuestionBubbleNode,
 };
 
 export function GraphTab({
-  activeTask,
+  paperId,
+  questionNodes,
+  questionRelations,
   evidenceSubmissions,
-  highlights,
-  graph,
-  onSaveGraph,
+  activeQuestionId,
+  onSelectQuestion,
+  onSaveQuestionGraph,
 }: GraphTabProps) {
-  if (!activeTask) {
+  if (questionNodes.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-newspaper-border bg-white/60 p-4 text-sm text-newspaper-faded">
-        Select a question to build its deduction graph.
-      </div>
-    );
-  }
-
-  const taskEvidence = useMemo(
-    () => evidenceSubmissions.filter((submission) => submission.taskId === activeTask.id),
-    [activeTask.id, evidenceSubmissions]
-  );
-
-  if (taskEvidence.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-newspaper-border bg-white/60 p-4 text-sm text-newspaper-faded">
-        Submit evidence for this question first. The graph is built from submitted evidence only.
+        Generate a case setup first. The graph is built from structured investigation questions.
       </div>
     );
   }
@@ -85,65 +75,85 @@ export function GraphTab({
   return (
     <ReactFlowProvider>
       <GraphWorkspace
-        activeTask={activeTask}
-        taskEvidence={taskEvidence}
-        highlights={highlights}
-        graph={graph}
-        onSaveGraph={onSaveGraph}
+        paperId={paperId}
+        questionNodes={questionNodes}
+        questionRelations={questionRelations}
+        evidenceSubmissions={evidenceSubmissions}
+        activeQuestionId={activeQuestionId}
+        onSelectQuestion={onSelectQuestion}
+        onSaveQuestionGraph={onSaveQuestionGraph}
       />
     </ReactFlowProvider>
   );
 }
 
-interface GraphWorkspaceProps {
-  activeTask: InvestigationTask;
-  taskEvidence: EvidenceSubmission[];
-  highlights: Highlight[];
-  graph: DeductionGraph | null;
-  onSaveGraph: (taskId: string, nodes: DeductionGraphNode[], edges: DeductionGraphEdge[]) => void;
-}
+interface GraphWorkspaceProps extends GraphTabProps {}
 
 function GraphWorkspace({
-  activeTask,
-  taskEvidence,
-  highlights,
-  graph,
-  onSaveGraph,
+  paperId,
+  questionNodes,
+  questionRelations,
+  evidenceSubmissions,
+  activeQuestionId,
+  onSelectQuestion,
+  onSaveQuestionGraph,
 }: GraphWorkspaceProps) {
-  const initialGraph = useMemo(
-    () => buildGraphState(activeTask, taskEvidence, highlights, graph),
-    [activeTask, taskEvidence, highlights, graph]
+  const graphSignature = useMemo(
+    () =>
+      JSON.stringify({
+        nodes: questionNodes.map((question) => ({
+          id: question.id,
+          position: question.position,
+          status: question.status,
+          type: question.type,
+          assignedEvidenceIds: question.assignedEvidenceIds,
+          score: question.score ?? null,
+          feedback: question.feedback ?? null,
+        })),
+        edges: questionRelations.map((relation) => ({
+          id: relation.id,
+          sourceQuestionId: relation.sourceQuestionId,
+          targetQuestionId: relation.targetQuestionId,
+          relationType: relation.relationType,
+          note: relation.note ?? '',
+        })),
+      }),
+    [questionNodes, questionRelations]
   );
 
-  const [nodes, setNodes] = useState<Node<EvidenceBubbleNodeData>[]>(initialGraph.nodes);
-  const [edges, setEdges] = useState<Edge[]>(initialGraph.edges);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const hydratedGraph = useMemo(
+    () => buildGraphState(questionNodes),
+    [graphSignature]
+  );
+
+  const [nodes, setNodes] = useState<Node<QuestionBubbleData>[]>(hydratedGraph.nodes);
+  const [edges, setEdges] = useState<Edge[]>(() => questionRelations.map(deserializeRelation));
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(activeQuestionId);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [edgeRelationType, setEdgeRelationType] = useState<DeductionRelationType>('support');
-  const [edgeNote, setEdgeNote] = useState('');
   const [draftTargetNodeId, setDraftTargetNodeId] = useState('');
-  const [draftRelationType, setDraftRelationType] = useState<DeductionRelationType>('support');
+  const [draftRelationType, setDraftRelationType] = useState<QuestionRelationType>('support');
   const [draftRelationNote, setDraftRelationNote] = useState('');
+  const [edgeRelationType, setEdgeRelationType] = useState<QuestionRelationType>('support');
+  const [edgeNote, setEdgeNote] = useState('');
   const skipPersistRef = useRef(true);
-  const onSaveGraphRef = useRef(onSaveGraph);
-  const paperId = taskEvidence[0]?.paperId ?? 0;
+  const onSaveQuestionGraphRef = useRef(onSaveQuestionGraph);
+  const lastPersistedSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
-    onSaveGraphRef.current = onSaveGraph;
-  }, [onSaveGraph]);
+    onSaveQuestionGraphRef.current = onSaveQuestionGraph;
+  }, [onSaveQuestionGraph]);
 
   useEffect(() => {
     skipPersistRef.current = true;
-    setNodes(initialGraph.nodes);
-    setEdges(initialGraph.edges);
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-    setEdgeRelationType('support');
-    setEdgeNote('');
-    setDraftTargetNodeId('');
-    setDraftRelationType('support');
-    setDraftRelationNote('');
-  }, [initialGraph]);
+    setNodes(hydratedGraph.nodes);
+    setEdges(questionRelations.map(deserializeRelation));
+  }, [hydratedGraph, questionRelations]);
+
+  useEffect(() => {
+    if (activeQuestionId) {
+      setSelectedNodeId(activeQuestionId);
+    }
+  }, [activeQuestionId]);
 
   useEffect(() => {
     if (skipPersistRef.current) {
@@ -151,16 +161,41 @@ function GraphWorkspace({
       return;
     }
 
-    onSaveGraphRef.current(
-      activeTask.id,
-      serializeNodes(paperId, activeTask.id, nodes),
-      serializeEdges(edges)
-    );
-  }, [activeTask.id, edges, nodes, paperId]);
+    const nextQuestionNodes = questionNodes.map((question) => {
+      const matched = nodes.find((node) => node.id === question.id);
+      if (!matched) {
+        return question;
+      }
 
-  const onNodesChange: OnNodesChange<Node<EvidenceBubbleNodeData>> = (changes) => {
+      return {
+        ...question,
+        position: matched.position,
+      };
+    });
+
+    const nextQuestionRelations = serializeRelations(paperId, edges, questionRelations);
+    const persistSignature = JSON.stringify({
+      nodes: nextQuestionNodes.map((question) => ({ id: question.id, position: question.position })),
+      edges: nextQuestionRelations.map((relation) => ({
+        id: relation.id,
+        sourceQuestionId: relation.sourceQuestionId,
+        targetQuestionId: relation.targetQuestionId,
+        relationType: relation.relationType,
+        note: relation.note ?? '',
+      })),
+    });
+
+    if (persistSignature === lastPersistedSignatureRef.current) {
+      return;
+    }
+
+    lastPersistedSignatureRef.current = persistSignature;
+    onSaveQuestionGraphRef.current(nextQuestionNodes, nextQuestionRelations);
+  }, [edges, nodes, paperId, questionNodes, questionRelations]);
+
+  const onNodesChange: OnNodesChange<Node<QuestionBubbleData>> = (changes) => {
     skipPersistRef.current = false;
-    setNodes((current) => applyNodeChanges(changes as any, current) as Node<EvidenceBubbleNodeData>[]);
+    setNodes((current) => applyNodeChanges(changes as any, current) as Node<QuestionBubbleData>[]);
   };
 
   const onEdgesChange: OnEdgesChange = (changes) => {
@@ -168,34 +203,21 @@ function GraphWorkspace({
     setEdges((current) => applyEdgeChanges(changes, current));
   };
 
-  const onConnect: OnConnect = (connection) => {
-    if (!connection.source || !connection.target || connection.source === connection.target) {
-      return;
-    }
-
-    skipPersistRef.current = false;
-    setEdges((current) => ensureEdge(current, connection.source!, connection.target!, 'support', undefined));
-  };
-
-  const onNodeDragStop = (_event: any, node: Node<EvidenceBubbleNodeData>) => {
-    skipPersistRef.current = false;
-    const nearbyNode = findNearbyNode(node, nodes);
-    if (!nearbyNode) {
-      return;
-    }
-
-    setEdges((current) => ensureEdge(current, node.id, nearbyNode.id, 'support', undefined));
-  };
-
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null;
+  const selectedQuestion = questionNodes.find((question) => question.id === selectedNodeId) ?? null;
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const evidenceCountByQuestion = new Map(
+    questionNodes.map((question) => [
+      question.id,
+      evidenceSubmissions.filter((submission) => question.assignedEvidenceIds.includes(submission.id ?? -1)).length,
+    ])
+  );
 
   useEffect(() => {
     if (!selectedEdge) {
       return;
     }
 
-    const relationType = (selectedEdge.data?.relationType as DeductionRelationType | undefined) ?? 'support';
+    const relationType = (selectedEdge.data?.relationType as QuestionRelationType | undefined) ?? 'support';
     setEdgeRelationType(relationType);
     setEdgeNote((selectedEdge.data?.note as string | undefined) ?? '');
   }, [selectedEdge]);
@@ -204,11 +226,10 @@ function GraphWorkspace({
     <div className="space-y-4">
       <section className="rounded-lg border border-newspaper-border bg-white p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-newspaper-faded">
-          Deduction Graph
+          Question Graph
         </p>
-        <h3 className="mt-2 text-base font-semibold text-newspaper-ink">{activeTask.title}</h3>
-        <p className="mt-1 text-sm text-newspaper-faded">
-          Drag evidence bubbles freely. When two bubbles move into connection range, the graph creates a draft edge automatically.
+        <p className="mt-2 text-sm text-newspaper-faded">
+          Drag question bubbles, connect the logic between them, and treat evidence as material attached to each question.
         </p>
       </section>
 
@@ -221,13 +242,15 @@ function GraphWorkspace({
             fitView
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeDragStop={onNodeDragStop}
             onNodeClick={(_event, node) => {
               setSelectedNodeId(node.id);
               setSelectedEdgeId(null);
+              onSelectQuestion(node.id);
             }}
-            onEdgeClick={(_event, edge) => setSelectedEdgeId(edge.id)}
+            onEdgeClick={(_event, edge) => {
+              setSelectedEdgeId(edge.id);
+              setSelectedNodeId(null);
+            }}
             defaultEdgeOptions={{ animated: false }}
           >
             <Background gap={20} color="#e5dccf" />
@@ -246,50 +269,49 @@ function GraphWorkspace({
             <h4 className="text-sm font-semibold text-newspaper-ink">Graph Summary</h4>
             <div className="mt-3 space-y-2 text-sm text-newspaper-faded">
               <p>
-                <span className="font-semibold text-newspaper-ink">{nodes.length}</span> evidence bubbles
+                <span className="font-semibold text-newspaper-ink">{nodes.length}</span> question bubbles
               </p>
               <p>
-                <span className="font-semibold text-newspaper-ink">{edges.length}</span> active links
+                <span className="font-semibold text-newspaper-ink">{edges.length}</span> logical links
               </p>
-              <p>Support = solid green, Contrast = dashed red, Method = blue arrow, Limitation = amber marked line.</p>
             </div>
           </section>
 
           <section className="rounded-lg border border-newspaper-border bg-white p-4">
-            <h4 className="text-sm font-semibold text-newspaper-ink">Selected Bubble</h4>
-            {!selectedNode ? (
+            <h4 className="text-sm font-semibold text-newspaper-ink">Selected Question</h4>
+            {!selectedQuestion ? (
               <p className="mt-3 text-sm text-newspaper-faded">
-                Click a bubble to inspect its evidence and create a link.
+                Click a question bubble to inspect it and create a relation.
               </p>
             ) : (
               <div className="mt-3 space-y-3">
                 <div className="rounded-lg border border-newspaper-border bg-newspaper-cream p-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-newspaper-faded">
-                    {selectedNode.id}
+                    {selectedQuestion.type}
                   </p>
                   <p className="mt-2 text-sm font-semibold text-newspaper-ink">
-                    {selectedNode.data.title}
+                    {selectedQuestion.title}
                   </p>
-                  <p className="mt-2 text-sm text-newspaper-ink">{selectedNode.data.summary}</p>
-                  {selectedNode.data.sourceText ? (
-                    <p className="mt-2 text-xs text-newspaper-faded">{selectedNode.data.sourceText}</p>
-                  ) : null}
+                  <p className="mt-2 text-sm text-newspaper-faded">{selectedQuestion.prompt}</p>
+                  <p className="mt-3 text-xs text-newspaper-faded">
+                    {evidenceCountByQuestion.get(selectedQuestion.id) ?? 0} attached evidence
+                  </p>
                 </div>
 
                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-newspaper-faded">
-                  Target bubble
+                  Target question
                   <select
-                    aria-label="Graph target bubble"
+                    aria-label="Graph target question"
                     value={draftTargetNodeId}
                     onChange={(event) => setDraftTargetNodeId(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-newspaper-border bg-white px-3 py-2 text-sm text-newspaper-ink outline-none transition-colors focus:border-newspaper-accent"
                   >
                     <option value="">Select target</option>
                     {nodes
-                      .filter((node) => node.id !== selectedNode.id)
+                      .filter((node) => node.id !== selectedQuestion.id)
                       .map((node) => (
                         <option key={node.id} value={node.id}>
-                          {node.id}
+                          {node.data.title}
                         </option>
                       ))}
                   </select>
@@ -300,7 +322,7 @@ function GraphWorkspace({
                   <select
                     aria-label="Graph draft relation type"
                     value={draftRelationType}
-                    onChange={(event) => setDraftRelationType(event.target.value as DeductionRelationType)}
+                    onChange={(event) => setDraftRelationType(event.target.value as QuestionRelationType)}
                     className="mt-1 w-full rounded-lg border border-newspaper-border bg-white px-3 py-2 text-sm text-newspaper-ink outline-none transition-colors focus:border-newspaper-accent"
                   >
                     {RELATIONSHIP_OPTIONS.map((option) => (
@@ -312,27 +334,28 @@ function GraphWorkspace({
                 </label>
 
                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-newspaper-faded">
-                  Link note
+                  Relation note
                   <textarea
                     aria-label="Graph draft relation note"
                     value={draftRelationNote}
                     onChange={(event) => setDraftRelationNote(event.target.value)}
                     className="mt-1 min-h-20 w-full rounded-lg border border-newspaper-border bg-white px-3 py-2 text-sm text-newspaper-ink outline-none transition-colors focus:border-newspaper-accent"
-                    placeholder="Optional note about this connection"
+                    placeholder="Optional note about this question-to-question connection"
                   />
                 </label>
 
                 <button
                   type="button"
                   onClick={() => {
-                    if (!draftTargetNodeId || draftTargetNodeId === selectedNode.id) {
+                    if (!draftTargetNodeId || draftTargetNodeId === selectedQuestion.id) {
                       return;
                     }
+
                     skipPersistRef.current = false;
                     setEdges((current) =>
                       ensureEdge(
                         current,
-                        selectedNode.id,
+                        selectedQuestion.id,
                         draftTargetNodeId,
                         draftRelationType,
                         draftRelationNote.trim() || undefined
@@ -343,29 +366,29 @@ function GraphWorkspace({
                   }}
                   className="rounded-full border border-newspaper-ink bg-newspaper-ink px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-newspaper-accent"
                 >
-                  Create Link
+                  Create Relation
                 </button>
               </div>
             )}
           </section>
 
           <section className="rounded-lg border border-newspaper-border bg-white p-4">
-            <h4 className="text-sm font-semibold text-newspaper-ink">Selected Link</h4>
+            <h4 className="text-sm font-semibold text-newspaper-ink">Selected Relation</h4>
             {!selectedEdge ? (
               <p className="mt-3 text-sm text-newspaper-faded">
-                Click an edge to edit its semantic relationship.
+                Click a relation to edit its type or note.
               </p>
             ) : (
               <div className="mt-3 space-y-3">
                 <p className="text-xs text-newspaper-faded">
-                  {selectedEdge.source} → {selectedEdge.target}
+                  {selectedEdge.source} {'->'} {selectedEdge.target}
                 </p>
                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-newspaper-faded">
                   Relation type
                   <select
                     aria-label="Graph relation type"
                     value={edgeRelationType}
-                    onChange={(event) => setEdgeRelationType(event.target.value as DeductionRelationType)}
+                    onChange={(event) => setEdgeRelationType(event.target.value as QuestionRelationType)}
                     className="mt-1 w-full rounded-lg border border-newspaper-border bg-white px-3 py-2 text-sm text-newspaper-ink outline-none transition-colors focus:border-newspaper-accent"
                   >
                     {RELATIONSHIP_OPTIONS.map((option) => (
@@ -383,7 +406,6 @@ function GraphWorkspace({
                     value={edgeNote}
                     onChange={(event) => setEdgeNote(event.target.value)}
                     className="mt-1 min-h-24 w-full rounded-lg border border-newspaper-border bg-white px-3 py-2 text-sm text-newspaper-ink outline-none transition-colors focus:border-newspaper-accent"
-                    placeholder="Why do these two pieces of evidence connect?"
                   />
                 </label>
 
@@ -409,7 +431,7 @@ function GraphWorkspace({
                     }}
                     className="rounded-full border border-newspaper-ink bg-newspaper-ink px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-newspaper-accent"
                   >
-                    Save Link
+                    Save Relation
                   </button>
                   <button
                     type="button"
@@ -420,7 +442,7 @@ function GraphWorkspace({
                     }}
                     className="rounded-full border border-newspaper-border px-3 py-2 text-xs font-semibold text-newspaper-faded transition-colors hover:border-newspaper-accent hover:text-newspaper-accent"
                   >
-                    Remove Link
+                    Remove Relation
                   </button>
                 </div>
               </div>
@@ -432,127 +454,66 @@ function GraphWorkspace({
   );
 }
 
-function buildGraphState(
-  activeTask: InvestigationTask,
-  taskEvidence: EvidenceSubmission[],
-  highlights: Highlight[],
-  graph: DeductionGraph | null
-): {
-  nodes: Node<EvidenceBubbleNodeData>[];
-  edges: Edge[];
-} {
-  const persistedNodes = new Map((graph?.nodes ?? []).map((node) => [node.submissionId, node]));
-  const highlightMap = new Map(highlights.map((highlight) => [highlight.id, highlight]));
-
-  const nodes = taskEvidence.map((submission, index) => {
-    const persisted = persistedNodes.get(submission.id!);
-    const sourceHighlight = highlightMap.get(submission.highlightId);
-
-    const graphNode: DeductionGraphNode = persisted ?? {
-      id: `submission-${submission.id}`,
-      paperId: submission.paperId,
-      taskId: activeTask.id,
-      submissionId: submission.id!,
-      position: defaultNodePosition(index),
-      type: 'evidenceBubble',
-      data: {
-        title: `E${submission.id}`,
-        summary: submission.note,
-        sourceText: sourceHighlight?.text ?? null,
-        pageNumber: sourceHighlight?.pageNumber ?? null,
-        evidenceType: submission.evidenceType,
-        tags: submission.aiTags ?? [],
-      },
-    };
-
-    return {
-      id: graphNode.id,
-      type: graphNode.type,
-      position: graphNode.position,
-      data: {
-        ...graphNode.data,
-        title: `E${submission.id}`,
-        summary: submission.note,
-        sourceText: sourceHighlight?.text ?? graphNode.data.sourceText ?? null,
-        pageNumber: sourceHighlight?.pageNumber ?? graphNode.data.pageNumber ?? null,
-        evidenceType: submission.evidenceType,
-        tags: submission.aiTags ?? graphNode.data.tags ?? [],
-      },
-    } satisfies Node<EvidenceBubbleNodeData>;
-  });
-
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const edges = (graph?.edges ?? [])
-    .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
-    .map(deserializeEdge);
-
-  return { nodes, edges };
-}
-
-function defaultNodePosition(index: number) {
-  const column = index % 3;
-  const row = Math.floor(index / 3);
-  return {
-    x: 70 + column * 280,
-    y: 60 + row * 180,
-  };
-}
-
-function serializeNodes(
-  paperId: number,
-  taskId: string,
-  nodes: Node<EvidenceBubbleNodeData>[]
-): DeductionGraphNode[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    paperId,
-    taskId,
-    submissionId: Number(node.id.replace('submission-', '')),
-    position: node.position,
-    type: 'evidenceBubble',
+function buildGraphState(questionNodes: QuestionNode[]) {
+  const nodes: Node<QuestionBubbleData>[] = questionNodes.map((question) => ({
+    id: question.id,
+    type: 'questionBubble',
+    position: question.position,
     data: {
-      title: node.data.title,
-      summary: node.data.summary,
-      sourceText: node.data.sourceText ?? null,
-      pageNumber: node.data.pageNumber ?? null,
-      evidenceType: node.data.evidenceType,
-      tags: node.data.tags ?? [],
+      title: question.title,
+      type: question.type,
+      status: question.status,
+      evidenceCount: question.assignedEvidenceIds.length,
     },
   }));
+
+  return { nodes };
 }
 
-function serializeEdges(edges: Edge[]): DeductionGraphEdge[] {
-  return edges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    relationType: ((edge.data?.relationType as DeductionRelationType | undefined) ?? 'support'),
-    note: (edge.data?.note as string | undefined) ?? undefined,
-    createdAt: (edge.data?.createdAt as string | undefined) ?? new Date().toISOString(),
-  }));
+function serializeRelations(
+  paperId: number,
+  edges: Edge[],
+  existingRelations: QuestionRelation[]
+): QuestionRelation[] {
+  return edges.map((edge) => {
+    const existing = existingRelations.find((relation) => relation.id === edge.id);
+    return {
+      id: edge.id,
+      paperId,
+      sourceQuestionId: edge.source,
+      targetQuestionId: edge.target,
+      relationType: ((edge.data?.relationType as QuestionRelationType | undefined) ?? 'support'),
+      note: (edge.data?.note as string | undefined) ?? undefined,
+      createdAt: existing?.createdAt ?? (edge.data?.createdAt as string | undefined) ?? new Date().toISOString(),
+    };
+  });
 }
 
-function deserializeEdge(edge: DeductionGraphEdge): Edge {
+function deserializeRelation(relation: QuestionRelation): Edge {
   return buildStyledEdge({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
+    id: relation.id,
+    source: relation.sourceQuestionId,
+    target: relation.targetQuestionId,
     data: {
-      relationType: edge.relationType,
-      note: edge.note,
-      createdAt: edge.createdAt,
+      relationType: relation.relationType,
+      note: relation.note,
+      createdAt: relation.createdAt,
     },
   });
 }
 
 function buildStyledEdge(edge: Edge): Edge {
-  const relationType = (edge.data?.relationType as DeductionRelationType | undefined) ?? 'support';
-
+  const relationType = (edge.data?.relationType as QuestionRelationType | undefined) ?? 'support';
   return {
     ...edge,
     label: formatRelationType(relationType),
     style: getEdgeStyle(relationType),
-    markerEnd: relationType === 'method' ? { type: MarkerType.ArrowClosed, color: '#2563eb' } : undefined,
+    markerEnd:
+      relationType === 'method-for'
+        ? { type: MarkerType.ArrowClosed, color: '#2563eb' }
+        : relationType === 'limitation-of'
+          ? { type: MarkerType.ArrowClosed, color: '#b45309' }
+          : undefined,
   };
 }
 
@@ -560,22 +521,17 @@ function ensureEdge(
   current: Edge[],
   source: string,
   target: string,
-  relationType: DeductionRelationType,
+  relationType: QuestionRelationType,
   note?: string
 ) {
-  const existing = current.find(
-    (edge) =>
-      (edge.source === source && edge.target === target) ||
-      (edge.source === target && edge.target === source)
-  );
-
+  const existing = current.find((edge) => edge.source === source && edge.target === target);
   if (existing) {
     return current;
   }
 
-  const next = addEdge(
+  return addEdge(
     buildStyledEdge({
-      id: `edge-${source}-${target}`,
+      id: `relation-${source}-${target}`,
       source,
       target,
       data: {
@@ -586,70 +542,48 @@ function ensureEdge(
     }),
     current
   );
-
-  return next;
 }
 
-function findNearbyNode(
-  draggedNode: Node<EvidenceBubbleNodeData>,
-  nodes: Node<EvidenceBubbleNodeData>[]
-) {
-  let nearest: Node<EvidenceBubbleNodeData> | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-
-  for (const node of nodes) {
-    if (node.id === draggedNode.id) {
-      continue;
-    }
-
-    const dx = node.position.x - draggedNode.position.x;
-    const dy = node.position.y - draggedNode.position.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    if (distance < AUTO_LINK_DISTANCE && distance < nearestDistance) {
-      nearest = node;
-      nearestDistance = distance;
-    }
-  }
-
-  return nearest;
-}
-
-function formatRelationType(relationType: DeductionRelationType) {
+function formatRelationType(relationType: QuestionRelationType) {
   switch (relationType) {
     case 'support':
       return 'Support';
     case 'contrast':
       return 'Contrast';
-    case 'method':
-      return 'Method';
-    case 'limitation':
-      return 'Limitation';
+    case 'method-for':
+      return 'Method For';
+    case 'limitation-of':
+      return 'Limitation Of';
     default:
       return relationType;
   }
 }
 
-function getEdgeStyle(relationType: DeductionRelationType) {
+function getEdgeStyle(relationType: QuestionRelationType) {
   switch (relationType) {
     case 'support':
       return { stroke: '#15803d', strokeWidth: 2.5 };
     case 'contrast':
       return { stroke: '#b91c1c', strokeWidth: 2.5, strokeDasharray: '6 4' };
-    case 'method':
+    case 'method-for':
       return { stroke: '#2563eb', strokeWidth: 2 };
-    case 'limitation':
+    case 'limitation-of':
       return { stroke: '#b45309', strokeWidth: 2.5, strokeDasharray: '2 4' };
     default:
       return { stroke: '#64748b', strokeWidth: 2 };
   }
 }
 
-function EvidenceBubbleNode({ data }: { data: EvidenceBubbleNodeData }) {
+function QuestionBubbleNode({ data }: { data: QuestionBubbleData }) {
   return (
-    <div className="min-w-[96px] rounded-full border border-newspaper-border bg-white px-4 py-3 text-center shadow-sm">
+    <div className="min-w-[180px] rounded-2xl border border-newspaper-border bg-white px-4 py-3 shadow-sm">
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-none !bg-newspaper-accent" />
-      <span className="text-sm font-semibold text-newspaper-ink">{data.title}</span>
+      <p className="text-sm font-semibold text-newspaper-ink">{data.title}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-newspaper-faded">
+        <span className="rounded-full border border-newspaper-border px-2 py-1">{data.type}</span>
+        <span className="rounded-full bg-newspaper-aged px-2 py-1">{data.status}</span>
+        <span>{data.evidenceCount} evidence</span>
+      </div>
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-none !bg-newspaper-accent" />
     </div>
   );

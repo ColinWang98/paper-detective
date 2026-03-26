@@ -8,6 +8,7 @@ import type { Highlight, HighlightColor } from '@/types';
 interface HighlightOverlayProps {
   highlights: Highlight[];
   currentPage: number;
+  submittedHighlightIds?: Set<number>;
 }
 
 const colorClasses: Record<HighlightColor, string> = {
@@ -24,7 +25,11 @@ const priorityLabels: Record<HighlightColor, string> = {
   gray: '⚪',
 };
 
-export function HighlightOverlay({ highlights, currentPage }: HighlightOverlayProps) {
+export function HighlightOverlay({
+  highlights,
+  currentPage,
+  submittedHighlightIds = new Set<number>(),
+}: HighlightOverlayProps) {
   // Filter highlights for current page
   const currentPageHighlights = useMemo(
     () => highlights.filter(h => h.pageNumber === currentPage),
@@ -48,16 +53,31 @@ export function HighlightOverlay({ highlights, currentPage }: HighlightOverlayPr
             {highlightRects.map((rect, index) => (
               <div
                 key={`${highlight.id}-${index}`}
-                className={`absolute rounded-[3px] ${colorClasses[highlight.color]} pointer-events-none transition-opacity duration-200 mix-blend-multiply shadow-[0_0_0_1px_rgba(255,255,255,0.12)]`}
+                className="absolute pointer-events-none"
                 style={{
                   left: `${rect.x}%`,
                   top: `${rect.y}%`,
                   width: `${rect.width}%`,
                   height: `${Math.max(rect.height, 1.6)}%`,
-                  filter: 'saturate(1.05)',
                 }}
-                title={`${getHighlightPriorityLabel(highlight)} ${highlight.text?.slice(0, 50)}...`}
-              />
+              >
+                <div
+                  className={`h-full w-full rounded-[3px] ${colorClasses[highlight.color]} transition-opacity duration-200 mix-blend-multiply shadow-[0_0_0_1px_rgba(255,255,255,0.12)] ${
+                    submittedHighlightIds.has(highlight.id ?? -1)
+                      ? 'ring-2 ring-newspaper-accent/70 shadow-[0_0_0_1px_rgba(95,75,50,0.5),0_0_0_4px_rgba(95,75,50,0.12)]'
+                      : ''
+                  }`}
+                  style={{
+                    filter: 'saturate(1.05)',
+                  }}
+                  title={`${getHighlightPriorityLabel(highlight)} ${highlight.text?.slice(0, 50)}...`}
+                />
+                {submittedHighlightIds.has(highlight.id ?? -1) ? (
+                  <div className="absolute -top-5 left-0 rounded-full border border-newspaper-ink/20 bg-white/95 px-2 py-0.5 text-[10px] font-semibold tracking-[0.16em] text-newspaper-ink shadow-sm">
+                    E{highlight.id}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </React.Fragment>
         );

@@ -154,6 +154,15 @@ describe('CaseSetupService', () => {
       source: 'ai-generated',
       model: 'deepseek-chat',
     });
+    expect(result.questionNodes.length).toBeGreaterThan(0);
+    expect(result.questionNodes[0]).toMatchObject({
+      type: 'claim',
+      status: 'open',
+    });
+    expect(result.doctorState).toMatchObject({
+      paperId,
+      mode: 'skeptical',
+    });
     expect(result.structureNodes[0]).toMatchObject({
       kind: 'intro',
       status: 'unseen',
@@ -214,6 +223,15 @@ describe('CaseSetupService', () => {
       investigationGoal: 'Cached goal',
       structureNodes: [],
       tasks: [],
+      questionNodes: [],
+      questionRelations: [],
+      doctorState: {
+        paperId,
+        activeQuestionId: null,
+        mode: 'skeptical' as const,
+        message: 'Cached diagnosis',
+        updatedAt: '2026-03-26T00:00:00.000Z',
+      },
       generatedAt: '2026-03-17T00:00:00.000Z',
       model: 'glm-4.7-flash' as const,
       source: 'cache' as const,

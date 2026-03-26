@@ -1,10 +1,14 @@
 import { dbHelpers } from '@/lib/db';
 import type {
   CaseSetup,
+  DoctorState,
   EvidenceType,
   InvestigationTask,
   PaperStructureKind,
   PaperStructureNode,
+  QuestionNode,
+  QuestionRelation,
+  QuestionRelationType,
   QuestionSection,
 } from '@/types';
 
@@ -945,6 +949,11 @@ export class CaseSetupService {
     rawTasks: RawTaskSet,
     structureNodes: PaperStructureNode[]
   ): CaseSetup {
+    const tasks = this.normalizeTasks(rawTasks.tasks ?? []);
+    const questionNodes = this.buildQuestionNodes(paperId, tasks);
+    const questionRelations = this.buildQuestionRelations(paperId, tasks);
+    const doctorState = this.buildInitialDoctorState(paperId, questionNodes);
+
     return {
       paperId,
       caseTitle: rawFrame.caseTitle?.trim() || 'Untitled Investigation',
@@ -953,7 +962,10 @@ export class CaseSetupService {
       openingJudgment: rawFrame.openingJudgment?.trim() || 'The opening evidence is suggestive, not conclusive.',
       investigationGoal: rawFrame.investigationGoal?.trim() || 'Verify the paper using direct text evidence.',
       structureNodes,
-      tasks: this.normalizeTasks(rawTasks.tasks ?? []),
+      tasks,
+      questionNodes,
+      questionRelations,
+      doctorState,
       generatedAt: new Date().toISOString(),
       model: DEFAULT_AI_MODEL,
       source: 'ai-generated',
@@ -962,6 +974,10 @@ export class CaseSetupService {
 
   private buildFallbackCaseSetup(paperId: number, pdfText: string): CaseSetup {
     const titleSeed = this.extractPaperTitle(pdfText);
+    const tasks = this.normalizeTasks([]);
+    const questionNodes = this.buildQuestionNodes(paperId, tasks);
+    const questionRelations = this.buildQuestionRelations(paperId, tasks);
+    const doctorState = this.buildInitialDoctorState(paperId, questionNodes);
 
     return {
       paperId,
@@ -971,7 +987,10 @@ export class CaseSetupService {
       openingJudgment: 'The investigation can begin, but the initial case framing was generated from fallback text-based heuristics.',
       investigationGoal: 'Collect direct text evidence for the core claim, the claimed novelty, the experimental support, and the remaining weak point.',
       structureNodes: this.buildFallbackStructureNodes(pdfText),
-      tasks: this.normalizeTasks([]),
+      tasks,
+      questionNodes,
+      questionRelations,
+      doctorState,
       generatedAt: new Date().toISOString(),
       model: DEFAULT_AI_MODEL,
       source: 'ai-generated',
@@ -1230,6 +1249,78 @@ export class CaseSetupService {
     return status === 'available' || status === 'in_progress' || status === 'completed'
       ? status
       : 'locked';
+  }
+
+  private buildQuestionNodes(paperId: number, tasks: InvestigationTask[]): QuestionNode[] {
+    return tasks.map((task, index) => ({
+      id: `question-${task.id}`,
+      paperId,
+      title: task.title,
+      prompt: task.question,
+      type: this.mapTaskToQuestionType(task),
+      status: 'open',
+      parentQuestionId: null,
+      dependsOnQuestionIds: [],
+      assignedEvidenceIds: [],
+      position: {
+        x: 120 + (index % 3) * 260,
+        y: 120 + Math.floor(index / 3) * 180,
+      },
+      score: task.score,
+      feedback: task.feedback,
+    }));
+  }
+
+  private buildQuestionRelations(paperId: number, tasks: InvestigationTask[]): QuestionRelation[] {
+    return tasks.flatMap((task) =>
+      task.unlocksTaskIds.map((unlockedTaskId) => ({
+        id: `question-relation-${task.id}-${unlockedTaskId}`,
+        paperId,
+        sourceQuestionId: `question-${task.id}`,
+        targetQuestionId: `question-${unlockedTaskId}`,
+        relationType: this.mapTaskToRelationType(task),
+        note: undefined,
+        createdAt: new Date().toISOString(),
+      }))
+    );
+  }
+
+  private buildInitialDoctorState(paperId: number, questionNodes: QuestionNode[]): DoctorState {
+    return {
+      paperId,
+      activeQuestionId: questionNodes[0]?.id ?? null,
+      mode: 'skeptical',
+      message: 'The diagnosis is still provisional. Lock the core claim before testing support and limitations.',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  private mapTaskToQuestionType(task: InvestigationTask): QuestionNode['type'] {
+    if (task.requiredEvidenceTypes.includes('limitation') || task.section === 'discussion') {
+      return 'limitation';
+    }
+
+    if (task.requiredEvidenceTypes.includes('method') || task.section === 'method') {
+      return 'method';
+    }
+
+    if (task.requiredEvidenceTypes.includes('claim') || task.section === 'intro') {
+      return 'claim';
+    }
+
+    return 'evidence';
+  }
+
+  private mapTaskToRelationType(task: InvestigationTask): QuestionRelationType {
+    if (task.requiredEvidenceTypes.includes('limitation') || task.section === 'discussion') {
+      return 'limitation-of';
+    }
+
+    if (task.requiredEvidenceTypes.includes('method') || task.section === 'method') {
+      return 'method-for';
+    }
+
+    return 'support';
   }
 }
 

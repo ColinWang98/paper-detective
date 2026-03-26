@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import DetectiveNotebook from '@/components/DetectiveNotebook';
 import { dbHelpers } from '@/lib/db';
 import { usePaperStore } from '@/lib/store';
-import type { Highlight, InvestigationTask } from '@/types';
+import type { DoctorState, Highlight, InvestigationTask, QuestionNode } from '@/types';
 
 jest.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -115,11 +115,32 @@ describe('evidence submission flow', () => {
       investigationTasks: tasks,
       evidenceSubmissions: [],
       deductionGraphs: [],
+      questionNodes: [
+        {
+          id: 'question-task-2',
+          paperId: 1,
+          title: 'Which result best supports the claim?',
+          prompt: 'What experimental evidence supports the claim?',
+          type: 'evidence',
+          status: 'open',
+          parentQuestionId: null,
+          dependsOnQuestionIds: [],
+          assignedEvidenceIds: [],
+          position: { x: 120, y: 160 },
+        } satisfies QuestionNode,
+      ],
+      doctorState: {
+        paperId: 1,
+        activeQuestionId: 'question-task-2',
+        mode: 'checking',
+        message: 'Result support still needs evidence.',
+        updatedAt: '2026-03-26T00:00:00.000Z',
+      } satisfies DoctorState,
       activeTaskId: 'task-2',
     });
   });
 
-  it('defaults evidence submission to the active task and shows current-task evidence in notes', async () => {
+  it('defaults evidence submission to the active task and shows current-question evidence in notes', async () => {
     render(
       <DetectiveNotebook
         pendingEvidenceHighlight={highlight}
@@ -153,13 +174,14 @@ describe('evidence submission flow', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
 
-    expect(screen.getByRole('heading', { name: 'Check the Result Support' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Which result best supports the claim?' })).toBeInTheDocument();
     expect(document.body).toHaveTextContent('This line contains the measurable improvement result.');
-    expect(screen.queryByRole('heading', { name: 'Define the Case' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Collection Bin')).not.toBeInTheDocument();
+    expect(document.body).toHaveTextContent('1 attached evidence');
+    expect(screen.queryByRole('heading', { name: 'Evidence Archive' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Bubble Notes Board' })).not.toBeInTheDocument();
   });
 
-  it('assigns the current question evidence into a cluster from the notes tab', async () => {
+  it('keeps submitted evidence attached to the active question node', async () => {
     usePaperStore.setState({
       currentPaper: {
         id: 1,
@@ -186,80 +208,35 @@ describe('evidence submission flow', () => {
       ],
       deductionGraphs: [],
       highlights: [highlight],
-      activeTaskId: 'task-2',
-    });
-
-    render(<DetectiveNotebook />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Supports Claim' }));
-
-    await waitFor(() => {
-      expect(mockDbHelpers.updateEvidenceSubmission).toHaveBeenCalledWith(2, {
-        clusterId: 'supports-claim',
-      });
-    });
-
-    expect(usePaperStore.getState().evidenceSubmissions[0]?.clusterId).toBe('supports-claim');
-  });
-
-  it('updates bubble tags from the clusters tab', async () => {
-    mockDbHelpers.updateEvidenceSubmission.mockResolvedValue(1);
-
-    usePaperStore.setState({
-      currentPaper: {
-        id: 1,
-        title: 'Test Paper',
-        authors: [],
-        year: 2026,
-        fileURL: '',
-        fileName: 'paper.pdf',
-        uploadDate: '2026-03-17T00:00:00.000Z',
-      },
-      groups: [],
-      expandedGroups: new Set<number>(),
-      investigationTasks: tasks,
-      evidenceSubmissions: [
+      questionNodes: [
         {
-          id: 3,
+          id: 'question-task-2',
           paperId: 1,
-          taskId: 'task-2',
-          highlightId: 77,
-          evidenceType: 'result',
-          note: 'This line contains the measurable improvement result.',
-          aiTags: ['result'],
-          createdAt: '2026-03-17T00:00:00.000Z',
-        },
+          title: 'Which result best supports the claim?',
+          prompt: 'What experimental evidence supports the claim?',
+          type: 'evidence',
+          status: 'partial',
+          parentQuestionId: null,
+          dependsOnQuestionIds: [],
+          assignedEvidenceIds: [2],
+          position: { x: 120, y: 160 },
+        } satisfies QuestionNode,
       ],
-      deductionGraphs: [],
-      highlights: [highlight],
+      doctorState: {
+        paperId: 1,
+        activeQuestionId: 'question-task-2',
+        mode: 'checking',
+        message: 'Result support now has one attached evidence item.',
+        updatedAt: '2026-03-26T00:00:00.000Z',
+      } satisfies DoctorState,
       activeTaskId: 'task-2',
     });
 
     render(<DetectiveNotebook />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    const input = screen.getByRole('textbox', { name: 'Bubble tags 3' });
-    fireEvent.change(input, {
-      target: { value: 'benchmark' },
-    });
-    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
-    fireEvent.change(input, {
-      target: { value: 'support' },
-    });
-    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Tags 3' }));
-
-    await waitFor(() => {
-      expect(mockDbHelpers.updateEvidenceSubmission).toHaveBeenCalledWith(3, {
-        aiTags: ['result', 'benchmark', 'support'],
-      });
-    });
-
-    expect(usePaperStore.getState().evidenceSubmissions[0]?.aiTags).toEqual([
-      'result',
-      'benchmark',
-      'support',
-    ]);
+    expect(document.body).toHaveTextContent('Question Evidence');
+    expect(document.body).toHaveTextContent('This line contains the measurable improvement result.');
+    expect(document.body).toHaveTextContent('1 attached evidence');
   });
 });

@@ -16,6 +16,7 @@ import {
 import { FolderOpen, GripVertical, Plus } from 'lucide-react';
 
 import { EvidenceSubmitModal } from '@/components/case/EvidenceSubmitModal';
+import { DoctorPanel } from '@/components/case/DoctorPanel';
 import { GraphTab } from '@/components/case/GraphTab';
 import { NotesTab } from '@/components/case/NotesTab';
 import { ProgressTab } from '@/components/case/ProgressTab';
@@ -56,12 +57,15 @@ export default function DetectiveNotebook({
     evidenceSubmissions,
     evidenceRelationships,
     deductionGraphs,
+    questionNodes,
+    questionRelations,
+    doctorState,
     submitEvidence,
     assignEvidenceCluster,
     updateEvidenceTags,
     addEvidenceRelationship,
     deleteEvidenceRelationship,
-    saveDeductionGraph,
+    saveQuestionState,
     applyEvidenceClusterSuggestions,
     activeTaskId,
     setActiveTask,
@@ -171,6 +175,9 @@ export default function DetectiveNotebook({
           evidenceSubmissions={evidenceSubmissions}
           evidenceRelationships={evidenceRelationships}
           deductionGraphs={deductionGraphs}
+          questionNodes={questionNodes}
+          questionRelations={questionRelations}
+          doctorState={doctorState}
           investigationTasks={investigationTasks}
           activeTaskId={activeTaskId}
           setActiveTab={setActiveTab}
@@ -288,9 +295,7 @@ export default function DetectiveNotebook({
           onRemoveRelationship={async (relationshipId) => {
             await deleteEvidenceRelationship(relationshipId);
           }}
-          onSaveGraph={async (taskId, nodes, edges) => {
-            await saveDeductionGraph(taskId, nodes, edges);
-          }}
+          saveQuestionState={saveQuestionState}
           onOpenCreateGroupModal={() => setIsCreateGroupModalOpen(true)}
         />
       </DndContext>
@@ -354,6 +359,9 @@ interface NotebookContentProps {
   evidenceSubmissions: EvidenceSubmission[];
   evidenceRelationships: ReturnType<typeof usePaperStore.getState>['evidenceRelationships'];
   deductionGraphs: ReturnType<typeof usePaperStore.getState>['deductionGraphs'];
+  questionNodes: ReturnType<typeof usePaperStore.getState>['questionNodes'];
+  questionRelations: ReturnType<typeof usePaperStore.getState>['questionRelations'];
+  doctorState: ReturnType<typeof usePaperStore.getState>['doctorState'];
   investigationTasks: ReturnType<typeof usePaperStore.getState>['investigationTasks'];
   activeTaskId: string | null;
   setActiveTab: (tab: NotebookTab) => void;
@@ -376,11 +384,7 @@ interface NotebookContentProps {
     note?: string
   ) => void | Promise<void>;
   onRemoveRelationship: (relationshipId: number) => void | Promise<void>;
-  onSaveGraph: (
-    taskId: string,
-    nodes: import('@/types').DeductionGraphNode[],
-    edges: import('@/types').DeductionGraphEdge[]
-  ) => void | Promise<void>;
+  saveQuestionState: ReturnType<typeof usePaperStore.getState>['saveQuestionState'];
   onOpenCreateGroupModal: () => void;
 }
 
@@ -390,6 +394,9 @@ function NotebookContent({
   evidenceSubmissions,
   evidenceRelationships,
   deductionGraphs,
+  questionNodes,
+  questionRelations,
+  doctorState,
   investigationTasks,
   activeTaskId,
   setActiveTab,
@@ -406,10 +413,11 @@ function NotebookContent({
   onAIAutoCluster,
   onCreateRelationship,
   onRemoveRelationship,
-  onSaveGraph,
+  saveQuestionState,
   onOpenCreateGroupModal,
 }: NotebookContentProps) {
   const { currentPaper, groups, highlights } = usePaperStore();
+  const activeQuestionId = doctorState?.activeQuestionId ?? questionNodes[0]?.id ?? null;
   const activeTask =
     investigationTasks.find((task) => task.id === activeTaskId) ??
     investigationTasks.find((task) => task.status === 'available' || task.status === 'in_progress') ??
@@ -462,17 +470,30 @@ function NotebookContent({
       </div>
 
       <div className="flex-1 overflow-auto bg-newspaper-cream p-4">
+        <DoctorPanel doctorState={doctorState} questionNodes={questionNodes} />
+
         {activeTab === 'questions' ? (
-          <QuestionsTab
-            tasks={investigationTasks}
-            activeTaskId={activeTask?.id ?? null}
-            onSelectTask={(taskId) => setActiveTask(taskId)}
-          />
+          <div className="mt-4">
+            <QuestionsTab
+              questionNodes={questionNodes}
+              activeQuestionId={activeQuestionId}
+              onSelectQuestion={(questionId) => {
+                const nextTaskId = questionId.startsWith('question-')
+                  ? questionId.replace(/^question-/, '')
+                  : questionId;
+                setActiveTask(nextTaskId);
+              }}
+            />
+          </div>
         ) : null}
 
         {activeTab === 'notes' ? (
-          <div className="space-y-4">
+          <div className="mt-4 space-y-4">
             <NotesTab
+              activeQuestion={
+                questionNodes.find((question) => question.id === activeQuestionId) ??
+                (activeTask ? questionNodes.find((question) => question.id === `question-${activeTask.id}`) ?? null : null)
+              }
               activeTask={activeTask}
               evidenceSubmissions={evidenceSubmissions}
               highlights={highlights}
@@ -485,40 +506,44 @@ function NotebookContent({
                   void onSubmitQuestion(activeTask.id);
                 }
               }}
-              onAssignCluster={(submissionId, clusterId) => {
-                void assignEvidenceCluster(submissionId, clusterId);
-              }}
-              onUpdateTags={(submissionId, aiTags) => {
-                void updateEvidenceTags(submissionId, aiTags);
-              }}
-              onAIAutoCluster={() => {
-                if (activeTask) {
-                  void onAIAutoCluster(activeTask);
-                }
-              }}
-              isAIClustering={isAIClustering}
-              aiClusterError={aiClusterError}
             />
           </div>
         ) : null}
 
         {activeTab === 'graph' ? (
-          <GraphTab
-            activeTask={activeTask}
-            evidenceSubmissions={evidenceSubmissions}
-            highlights={highlights}
-            graph={
-              activeTask
-                ? deductionGraphs.find((item) => item.taskId === activeTask.id) ?? null
-                : null
-            }
-            onSaveGraph={(taskId, nodes, edges) => {
-              void onSaveGraph(taskId, nodes, edges);
-            }}
-          />
+          <div className="mt-4">
+            <GraphTab
+              paperId={currentPaper?.id ?? 0}
+              questionNodes={questionNodes}
+              questionRelations={questionRelations}
+              evidenceSubmissions={evidenceSubmissions}
+              activeQuestionId={activeQuestionId}
+              onSelectQuestion={(questionId) => {
+                const nextTaskId = questionId.startsWith('question-')
+                  ? questionId.replace(/^question-/, '')
+                  : questionId;
+                setActiveTask(nextTaskId);
+              }}
+              onSaveQuestionGraph={(nextQuestionNodes, nextQuestionRelations) => {
+                if (!currentPaper?.id) {
+                  return;
+                }
+                void saveQuestionState(
+                  currentPaper.id,
+                  nextQuestionNodes,
+                  nextQuestionRelations,
+                  doctorState
+                );
+              }}
+            />
+          </div>
         ) : null}
 
-        {activeTab === 'progress' ? <ProgressTab tasks={investigationTasks} /> : null}
+        {activeTab === 'progress' ? (
+          <div className="mt-4">
+            <ProgressTab tasks={investigationTasks} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

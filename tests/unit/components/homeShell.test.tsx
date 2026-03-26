@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import type { EvidenceSubmission, InvestigationTask, Paper } from '@/types';
+import type { DoctorState, EvidenceSubmission, InvestigationTask, Paper, QuestionNode } from '@/types';
 
 const setActiveTaskMock = jest.fn();
 const baseStoreState: any = {
@@ -40,6 +40,9 @@ const baseStoreState: any = {
   saveDeductionGraph: jest.fn().mockResolvedValue(undefined),
   applyEvidenceClusterSuggestions: jest.fn().mockResolvedValue(undefined),
   activeTaskId: 'task-1',
+  questionNodes: [],
+  questionRelations: [],
+  doctorState: null,
   setActiveTask: setActiveTaskMock,
 };
 let mockStoreState = { ...baseStoreState };
@@ -115,6 +118,7 @@ describe('Home shell copy', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Paper Detective' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bird-Head Doctor' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Questions' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Graph' })).toBeInTheDocument();
@@ -143,23 +147,6 @@ describe('Home shell copy', () => {
           unlocksTaskIds: [],
           status: 'available',
         } satisfies InvestigationTask,
-        {
-          id: 'task-2',
-          title: 'Check the Result Support',
-          question: 'Find the strongest result evidence.',
-          narrativeHook: 'Move to the result section.',
-          section: 'result',
-          whereToLook: ['Result'],
-          whatToFind: 'Result sentence',
-          submissionMode: 'evidence_only',
-          recommendedEvidenceCount: 1,
-          evaluationFocus: 'result grounding',
-          linkedStructureKinds: ['result'],
-          requiredEvidenceTypes: ['result'],
-          minEvidenceCount: 1,
-          unlocksTaskIds: [],
-          status: 'available',
-        } satisfies InvestigationTask,
       ] as InvestigationTask[],
       evidenceSubmissions: [
         {
@@ -181,18 +168,55 @@ describe('Home shell copy', () => {
           createdAt: '2026-03-19T00:00:00.000Z',
         } satisfies EvidenceSubmission,
       ] as EvidenceSubmission[],
+      questionNodes: [
+        {
+          id: 'claim-q1',
+          paperId: 1,
+          title: 'What is the core claim?',
+          prompt: 'Find the central claim.',
+          type: 'claim',
+          status: 'open',
+          parentQuestionId: null,
+          dependsOnQuestionIds: [],
+          assignedEvidenceIds: [10],
+          position: { x: 120, y: 120 },
+        } satisfies QuestionNode,
+        {
+          id: 'evidence-q2',
+          paperId: 1,
+          title: 'Which result best supports the claim?',
+          prompt: 'Find the strongest result evidence.',
+          type: 'evidence',
+          status: 'partial',
+          parentQuestionId: 'claim-q1',
+          dependsOnQuestionIds: ['claim-q1'],
+          assignedEvidenceIds: [11],
+          position: { x: 320, y: 220 },
+        } satisfies QuestionNode,
+      ] as QuestionNode[],
+      doctorState: {
+        paperId: 1,
+        activeQuestionId: 'claim-q1',
+        mode: 'checking',
+        message: 'The claim is identified, but support is still incomplete.',
+        updatedAt: '2026-03-26T00:00:00.000Z',
+      } satisfies DoctorState,
     };
 
     render(<DetectiveNotebook />);
 
-    expect(screen.getByRole('button', { name: /Lock the Core Claim/i })).toBeInTheDocument();
+    const doctorPanel = screen.getByRole('heading', { name: 'Bird-Head Doctor' }).closest('section');
+    expect(doctorPanel).toBeInTheDocument();
+    expect(doctorPanel).toHaveTextContent('The claim is identified, but support is still incomplete.');
+    expect(screen.getByRole('button', { name: /What is the core claim\?/i })).toBeInTheDocument();
     expect(document.body).toHaveTextContent('2 questions available');
-    expect(screen.getByRole('button', { name: /Check the Result Support/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Which result best supports the claim\?/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-    expect(screen.getByRole('heading', { name: 'Lock the Core Claim' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Evidence Archive' })).toBeInTheDocument();
-    expect(screen.getByText(/2 total/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What is the core claim?' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Question Evidence' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Evidence Archive' })).not.toBeInTheDocument();
+    expect(document.body).toHaveTextContent('1 attached evidence');
 
     fireEvent.click(screen.getByRole('tab', { name: 'Progress' }));
     expect(screen.getByRole('heading', { name: /Completed questions/i })).toBeInTheDocument();

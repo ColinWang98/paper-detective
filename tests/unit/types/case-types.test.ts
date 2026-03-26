@@ -1,8 +1,11 @@
 import type {
   CaseSetup,
+  DoctorState,
   EvidenceSubmission,
   InvestigationTask,
   PaperStructureNode,
+  QuestionNode,
+  QuestionRelation,
 } from '@/types';
 
 describe('case investigation domain types', () => {
@@ -48,6 +51,28 @@ describe('case investigation domain types', () => {
       investigationGoal: 'Verify the paper with direct text evidence.',
       structureNodes,
       tasks,
+      questionNodes: [
+        {
+          id: 'question-task-1',
+          paperId: 1,
+          title: 'Lock the Core Claim',
+          prompt: 'Find the exact problem statement and the main claim the authors want you to believe.',
+          type: 'claim',
+          status: 'open',
+          parentQuestionId: null,
+          dependsOnQuestionIds: [],
+          assignedEvidenceIds: [],
+          position: { x: 120, y: 120 },
+        },
+      ],
+      questionRelations: [],
+      doctorState: {
+        paperId: 1,
+        activeQuestionId: 'question-task-1',
+        mode: 'skeptical',
+        message: 'The central claim still needs direct support.',
+        updatedAt: '2026-03-26T00:00:00.000Z',
+      },
       generatedAt: '2026-03-17T00:00:00.000Z',
       model: 'glm-4.7-flash',
       source: 'ai-generated',
@@ -89,5 +114,54 @@ describe('case investigation domain types', () => {
     expect(evidence.note).toContain('problem scope');
     expect(evidence.sourceSection).toBe('intro');
     expect(evidence.aiTags).toContain('claim');
+  });
+
+  it('defines question nodes as the primary investigation unit', () => {
+    const questionNode: QuestionNode = {
+      id: 'claim-q1',
+      paperId: 1,
+      title: 'What is the core claim?',
+      prompt: 'Lock the authors’ exact central claim before checking support.',
+      type: 'claim',
+      status: 'open',
+      parentQuestionId: null,
+      dependsOnQuestionIds: [],
+      assignedEvidenceIds: [11, 12],
+      position: { x: 120, y: 180 },
+      score: 0,
+      feedback: 'No evidence attached yet.',
+    };
+
+    expect(questionNode.type).toBe('claim');
+    expect(questionNode.assignedEvidenceIds).toEqual([11, 12]);
+    expect(questionNode.parentQuestionId).toBeNull();
+  });
+
+  it('defines question relations separately from evidence relationships', () => {
+    const relation: QuestionRelation = {
+      id: 'rel-1',
+      paperId: 1,
+      sourceQuestionId: 'claim-q1',
+      targetQuestionId: 'method-q2',
+      relationType: 'method-for',
+      note: 'The method question explains how the claim is achieved.',
+      createdAt: '2026-03-26T00:00:00.000Z',
+    };
+
+    expect(relation.relationType).toBe('method-for');
+    expect(relation.sourceQuestionId).toBe('claim-q1');
+  });
+
+  it('tracks doctor state as a persistent diagnostic summary', () => {
+    const doctorState: DoctorState = {
+      paperId: 1,
+      activeQuestionId: 'claim-q1',
+      mode: 'checking',
+      message: 'The core claim is identified, but support is still incomplete.',
+      updatedAt: '2026-03-26T00:00:00.000Z',
+    };
+
+    expect(doctorState.mode).toBe('checking');
+    expect(doctorState.activeQuestionId).toBe('claim-q1');
   });
 });

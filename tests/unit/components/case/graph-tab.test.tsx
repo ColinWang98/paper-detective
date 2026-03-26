@@ -3,10 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { GraphTab } from '@/components/case/GraphTab';
 import type {
-  DeductionGraph,
   EvidenceSubmission,
-  Highlight,
-  InvestigationTask,
+  QuestionNode,
+  QuestionRelation,
 } from '@/types';
 
 jest.mock('@xyflow/react', () => {
@@ -21,8 +20,8 @@ jest.mock('@xyflow/react', () => {
       onNodeClick,
       children,
     }: {
-      nodes: Array<{ id: string; data: { title: string; summary: string } }>;
-      edges: Array<{ id: string; source: string; target: string; label?: string }>;
+      nodes: Array<{ id: string; data: { title: string } }>;
+      edges: Array<{ id: string; label?: string }>;
       onEdgeClick?: (event: unknown, edge: any) => void;
       onNodeClick?: (event: unknown, node: any) => void;
       children: React.ReactNode;
@@ -69,207 +68,143 @@ jest.mock('@xyflow/react', () => {
 });
 
 describe('GraphTab', () => {
-  const activeTask: InvestigationTask = {
-    id: 'task-1',
-    title: 'Check the Result Support',
-    question: 'What experimental evidence supports the claim?',
-    narrativeHook: 'Look at the results section.',
-    section: 'result',
-    whereToLook: ['Results'],
-    whatToFind: 'Result evidence',
-    submissionMode: 'evidence_plus_optional_judgment',
-    recommendedEvidenceCount: 2,
-    evaluationFocus: 'evidence coverage',
-    linkedStructureKinds: ['result'],
-    requiredEvidenceTypes: ['result'],
-    minEvidenceCount: 1,
-    unlocksTaskIds: [],
-    status: 'available',
-  };
+  const questionNodes: QuestionNode[] = [
+    {
+      id: 'question-task-claim',
+      paperId: 1,
+      title: 'What is the core claim?',
+      prompt: 'Find the central claim in the authors’ own words.',
+      type: 'claim',
+      status: 'partial',
+      parentQuestionId: null,
+      dependsOnQuestionIds: [],
+      assignedEvidenceIds: [1],
+      position: { x: 100, y: 100 },
+    },
+    {
+      id: 'question-task-result',
+      paperId: 1,
+      title: 'Which result best supports the claim?',
+      prompt: 'Locate the strongest result evidence.',
+      type: 'evidence',
+      status: 'open',
+      parentQuestionId: 'question-task-claim',
+      dependsOnQuestionIds: ['question-task-claim'],
+      assignedEvidenceIds: [2],
+      position: { x: 320, y: 140 },
+    },
+  ];
+
+  const questionRelations: QuestionRelation[] = [
+    {
+      id: 'relation-question-task-claim-question-task-result',
+      paperId: 1,
+      sourceQuestionId: 'question-task-claim',
+      targetQuestionId: 'question-task-result',
+      relationType: 'support',
+      note: 'The result question supports the central claim.',
+      createdAt: '2026-03-26T00:00:00.000Z',
+    },
+  ];
 
   const evidenceSubmissions: EvidenceSubmission[] = [
     {
       id: 1,
       paperId: 1,
-      taskId: 'task-1',
+      taskId: 'task-claim',
       highlightId: 10,
-      evidenceType: 'result',
-      note: 'Table 2 shows the strongest gain.',
-      createdAt: '2026-03-21T00:00:00.000Z',
+      evidenceType: 'claim',
+      note: 'This sentence states the central claim.',
+      createdAt: '2026-03-26T00:00:00.000Z',
     },
     {
       id: 2,
       paperId: 1,
-      taskId: 'task-1',
+      taskId: 'task-result',
       highlightId: 11,
-      evidenceType: 'limitation',
-      note: 'The gain only appears on one benchmark.',
-      createdAt: '2026-03-21T00:00:00.000Z',
+      evidenceType: 'result',
+      note: 'This sentence gives the strongest result.',
+      createdAt: '2026-03-26T00:00:00.000Z',
     },
   ];
 
-  const highlights: Highlight[] = [
-    {
-      id: 10,
-      paperId: 1,
-      pageNumber: 4,
-      text: 'Accuracy improves by 12%.',
-      priority: 'important',
-      color: 'yellow',
-      timestamp: '2026-03-21T00:00:00.000Z',
-      createdAt: '2026-03-21T00:00:00.000Z',
-    },
-    {
-      id: 11,
-      paperId: 1,
-      pageNumber: 5,
-      text: 'The method does not generalize to larger datasets.',
-      priority: 'important',
-      color: 'yellow',
-      timestamp: '2026-03-21T00:00:00.000Z',
-      createdAt: '2026-03-21T00:00:00.000Z',
-    },
-  ];
-
-  const graph: DeductionGraph = {
-    id: 1,
-    paperId: 1,
-    taskId: 'task-1',
-    updatedAt: '2026-03-21T00:00:00.000Z',
-    nodes: [
-      {
-        id: 'submission-1',
-        paperId: 1,
-        taskId: 'task-1',
-        submissionId: 1,
-        position: { x: 100, y: 100 },
-        type: 'evidenceBubble',
-        data: {
-          title: 'Page 4',
-          summary: 'Table 2 shows the strongest gain.',
-          sourceText: 'Accuracy improves by 12%.',
-          pageNumber: 4,
-          evidenceType: 'result',
-          tags: ['gain'],
-        },
-      },
-      {
-        id: 'submission-2',
-        paperId: 1,
-        taskId: 'task-1',
-        submissionId: 2,
-        position: { x: 300, y: 120 },
-        type: 'evidenceBubble',
-        data: {
-          title: 'Page 5',
-          summary: 'The gain only appears on one benchmark.',
-          sourceText: 'The method does not generalize to larger datasets.',
-          pageNumber: 5,
-          evidenceType: 'limitation',
-          tags: ['narrow'],
-        },
-      },
-    ],
-    edges: [
-      {
-        id: 'edge-submission-1-submission-2',
-        source: 'submission-1',
-        target: 'submission-2',
-        relationType: 'contrast',
-        note: 'Strong benchmark gain, but weak generalization.',
-        createdAt: '2026-03-21T00:00:00.000Z',
-      },
-    ],
-  };
-
-  it('renders persisted evidence bubbles as compact ids', () => {
+  it('renders question bubbles instead of evidence ids', () => {
     render(
       <GraphTab
-        activeTask={activeTask}
+        paperId={1}
+        questionNodes={questionNodes}
+        questionRelations={questionRelations}
         evidenceSubmissions={evidenceSubmissions}
-        highlights={highlights}
-        graph={graph}
-        onSaveGraph={jest.fn()}
+        activeQuestionId="question-task-claim"
+        onSelectQuestion={jest.fn()}
+        onSaveQuestionGraph={jest.fn()}
       />
     );
 
-    expect(screen.getByRole('button', { name: 'node-submission-1' })).toHaveTextContent('E1');
-    expect(screen.getByRole('button', { name: 'node-submission-2' })).toHaveTextContent('E2');
-  });
-
-  it('updates selected edge relation metadata and persists nodes + edges JSON', () => {
-    const onSaveGraph = jest.fn();
-
-    render(
-      <GraphTab
-        activeTask={activeTask}
-        evidenceSubmissions={evidenceSubmissions}
-        highlights={highlights}
-        graph={graph}
-        onSaveGraph={onSaveGraph}
-      />
+    expect(screen.getByRole('button', { name: 'node-question-task-claim' })).toHaveTextContent(
+      'What is the core claim?'
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'edge-edge-submission-1-submission-2' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Graph relation type' }), {
-      target: { value: 'limitation' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Graph relation note' }), {
-      target: { value: 'This limits how much we trust the result.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Link' }));
-
-    expect(onSaveGraph).toHaveBeenCalledWith(
-      'task-1',
-      expect.arrayContaining([
-        expect.objectContaining({
-          submissionId: 1,
-        }),
-      ]),
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'edge-submission-1-submission-2',
-          relationType: 'limitation',
-          note: 'This limits how much we trust the result.',
-        }),
-      ])
+    expect(screen.getByRole('button', { name: 'node-question-task-result' })).toHaveTextContent(
+      'Which result best supports the claim?'
     );
   });
 
-  it('creates a graph edge from the selected bubble panel', () => {
-    const onSaveGraph = jest.fn();
+  it('selects a question bubble and exposes relation creation controls', () => {
+    const onSelectQuestion = jest.fn();
 
     render(
       <GraphTab
-        activeTask={activeTask}
+        paperId={1}
+        questionNodes={questionNodes}
+        questionRelations={questionRelations}
         evidenceSubmissions={evidenceSubmissions}
-        highlights={highlights}
-        graph={{ ...graph, edges: [] }}
-        onSaveGraph={onSaveGraph}
+        activeQuestionId="question-task-claim"
+        onSelectQuestion={onSelectQuestion}
+        onSaveQuestionGraph={jest.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'node-submission-1' }));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Graph target bubble' }), {
-      target: { value: 'submission-2' },
+    fireEvent.click(screen.getByRole('button', { name: 'node-question-task-claim' }));
+
+    expect(onSelectQuestion).toHaveBeenCalledWith('question-task-claim');
+    expect(screen.getByRole('combobox', { name: 'Graph target question' })).toBeInTheDocument();
+    expect(document.body).toHaveTextContent('1 attached evidence');
+  });
+
+  it('creates and persists a question relation from the selected question panel', () => {
+    const onSaveQuestionGraph = jest.fn();
+
+    render(
+      <GraphTab
+        paperId={1}
+        questionNodes={questionNodes}
+        questionRelations={[]}
+        evidenceSubmissions={evidenceSubmissions}
+        activeQuestionId="question-task-claim"
+        onSelectQuestion={jest.fn()}
+        onSaveQuestionGraph={onSaveQuestionGraph}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Graph target question' }), {
+      target: { value: 'question-task-result' },
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'Graph draft relation type' }), {
       target: { value: 'support' },
     });
     fireEvent.change(screen.getByRole('textbox', { name: 'Graph draft relation note' }), {
-      target: { value: 'These two clues support the same claim.' },
+      target: { value: 'This result question supports the core claim.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Create Link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Relation' }));
 
-    expect(onSaveGraph).toHaveBeenCalledWith(
-      'task-1',
+    expect(onSaveQuestionGraph).toHaveBeenCalledWith(
       expect.any(Array),
       expect.arrayContaining([
         expect.objectContaining({
-          source: 'submission-1',
-          target: 'submission-2',
+          sourceQuestionId: 'question-task-claim',
+          targetQuestionId: 'question-task-result',
           relationType: 'support',
-          note: 'These two clues support the same claim.',
+          note: 'This result question supports the core claim.',
         }),
       ])
     );

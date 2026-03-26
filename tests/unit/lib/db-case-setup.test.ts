@@ -1,5 +1,13 @@
 import { db, dbHelpers } from '@/lib/db';
-import type { CaseSetup, EvidenceSubmission, InvestigationTask, PaperStructureNode } from '@/types';
+import type {
+  CaseSetup,
+  DoctorState,
+  EvidenceSubmission,
+  InvestigationTask,
+  PaperStructureNode,
+  QuestionNode,
+  QuestionRelation,
+} from '@/types';
 
 if (typeof globalThis.structuredClone !== 'function') {
   globalThis.structuredClone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -47,6 +55,28 @@ describe('dbHelpers case setup persistence', () => {
     investigationGoal: 'Verify each claim against the paper text.',
     structureNodes,
     tasks,
+    questionNodes: [
+      {
+        id: 'question-task-1',
+        paperId: 7,
+        title: 'Define the Case',
+        prompt: 'What problem does the paper claim to solve?',
+        type: 'claim',
+        status: 'open',
+        parentQuestionId: null,
+        dependsOnQuestionIds: [],
+        assignedEvidenceIds: [],
+        position: { x: 120, y: 120 },
+      },
+    ],
+    questionRelations: [],
+    doctorState: {
+      paperId: 7,
+      activeQuestionId: 'question-task-1',
+      mode: 'skeptical',
+      message: 'The core claim still needs direct evidence.',
+      updatedAt: '2026-03-26T00:00:00.000Z',
+    },
     generatedAt: '2026-03-17T00:00:00.000Z',
     model: 'glm-4.7-flash',
     source: 'ai-generated',
@@ -70,6 +100,55 @@ describe('dbHelpers case setup persistence', () => {
       createdAt: '2026-03-17T00:01:00.000Z',
     },
   ];
+
+  const questionNodes: QuestionNode[] = [
+    {
+      id: 'claim-q1',
+      paperId: 7,
+      title: 'What is the core claim?',
+      prompt: 'Find the exact central claim.',
+      type: 'claim',
+      status: 'open',
+      parentQuestionId: null,
+      dependsOnQuestionIds: [],
+      assignedEvidenceIds: [],
+      position: { x: 80, y: 120 },
+    },
+    {
+      id: 'method-q2',
+      paperId: 7,
+      title: 'How does the method produce the result?',
+      prompt: 'Tie the method to the claimed gain.',
+      type: 'method',
+      status: 'partial',
+      parentQuestionId: 'claim-q1',
+      dependsOnQuestionIds: ['claim-q1'],
+      assignedEvidenceIds: [1],
+      position: { x: 280, y: 180 },
+      score: 0.5,
+      feedback: 'Method evidence is partial.',
+    },
+  ];
+
+  const questionRelations: QuestionRelation[] = [
+    {
+      id: 'rel-1',
+      paperId: 7,
+      sourceQuestionId: 'method-q2',
+      targetQuestionId: 'claim-q1',
+      relationType: 'method-for',
+      note: 'Method explains how the claim is achieved.',
+      createdAt: '2026-03-26T00:00:00.000Z',
+    },
+  ];
+
+  const doctorState: DoctorState = {
+    paperId: 7,
+    activeQuestionId: 'claim-q1',
+    mode: 'checking',
+    message: 'The claim is identified, but support is still incomplete.',
+    updatedAt: '2026-03-26T00:00:00.000Z',
+  };
 
   beforeEach(async () => {
     await db.delete();
@@ -113,5 +192,21 @@ describe('dbHelpers case setup persistence', () => {
     expect(loaded).toHaveLength(2);
     expect(loaded.map((submission) => submission.taskId)).toEqual(['task-1', 'task-2']);
     expect(loaded.every((submission) => submission.paperId === 7)).toBe(true);
+  });
+
+  it('saves and loads question-centered investigation state by paperId', async () => {
+    await dbHelpers.saveQuestionNodes(7, questionNodes);
+    await dbHelpers.saveQuestionRelations(7, questionRelations);
+    await dbHelpers.saveDoctorState(doctorState);
+
+    const [loadedNodes, loadedRelations, loadedDoctorState] = await Promise.all([
+      dbHelpers.getQuestionNodes(7),
+      dbHelpers.getQuestionRelations(7),
+      dbHelpers.getDoctorState(7),
+    ]);
+
+    expect(loadedNodes).toEqual(questionNodes);
+    expect(loadedRelations).toEqual(questionRelations);
+    expect(loadedDoctorState).toEqual(doctorState);
   });
 });

@@ -1,6 +1,6 @@
 # Current Project Status
 
-Verified on `2026-03-20`.
+Verified on `2026-03-26`.
 
 ## Source Of Truth
 
@@ -10,13 +10,14 @@ Verified on `2026-03-20`.
 
 ## Current Phase
 
-The project is no longer in pre-implementation design. The current state is:
+The project has moved beyond MVP-only stabilization. The current state is:
 
-- `A Mode` detective investigation MVP implemented
+- `A Mode` detective investigation flow implemented
 - `B Mode` direct AI brief flow implemented
+- Notes and Graph workspaces implemented
 - engineering baseline restored and verified
 
-This is now a `MVP verification and refinement` phase, not a planning-only phase.
+This is now a `question-centered investigation redesign and doctor-agent planning` stage.
 
 ## Implemented Product Flow
 
@@ -27,10 +28,14 @@ This is now a `MVP verification and refinement` phase, not a planning-only phase
   - tutorial modal
 - `A Mode` uses a notebook-style right panel with:
   - `Questions`
-  - `Evidence Box`
+  - `Notes`
+  - `Graph`
   - `Progress`
+- a doctor panel redesign is planned as the next structural rewrite
 - evidence submission binds to the active question
 - each question can be submitted for AI scoring and feedback
+- submitted evidence can be clustered and tagged
+- deduction graph nodes and edges are persisted per task
 - the final case report unlocks after the completed-question threshold is reached
 - `B Mode` is now a direct AI brief flow and no longer depends on investigation progress
 
@@ -43,8 +48,8 @@ This is now a `MVP verification and refinement` phase, not a planning-only phase
 
 Latest full Jest result:
 
-- `41/41` suites passed
-- `295/295` tests passed
+- `47/47` suites passed
+- `328/328` tests passed
 
 ## Notes On Verification
 
@@ -53,15 +58,24 @@ Latest full Jest result:
 
 ## Current Risks
 
-- AI-generated investigation questions are still not consistently paper-specific enough; fallback questions are usable but not strong product output.
-- PDF evidence capture still depends on text-layer quality; manual cleanup helps, but OCR/region capture does not exist yet.
+- The current workspace is still evidence-centered in several important places; the next rewrite must move the system to question-centered interaction.
+- Bubble linking and graph ergonomics still need refinement before the graph is a strong reasoning surface.
+- PDF zoom, focus, and evidence-capture ergonomics have improved but still need deeper guided-reading work.
+- AI-generated investigation questions are still not consistently paper-specific enough.
+- PDF evidence capture still depends on text-layer quality; OCR and region capture do not exist yet.
 - Manual gameplay validation is still needed across multiple real papers.
 - Some repository docs still describe older milestones and should not be treated as current.
 
 ## Next Recommended Phase
 
-1. Manual acceptance run:
-   upload PDF -> complete several questions -> unlock final report -> compare against B mode brief
-2. Improve task generation quality so investigation prompts are tightly grounded in each paper
-3. Improve PDF evidence capture with region-based selection and OCR fallback
-4. Update remaining historical docs to match the current A/B mode architecture
+1. Execute the question-centered rewrite:
+   question nodes, question relations, doctor panel, question-attached evidence
+2. Rebuild Graph as a question graph rather than an evidence graph
+3. Improve task generation quality so investigation prompts are tightly grounded in each paper
+4. Improve PDF evidence capture with region-based selection and OCR fallback
+5. Update remaining historical docs to match the current A/B mode architecture
+
+Formal plans:
+
+- `docs/plans/2026-03-26-phase-4-guided-reading-evidence-graph-and-feedback.md`
+- `docs/plans/2026-03-26-question-centered-investigation-and-doctor-agent.md`

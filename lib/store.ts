@@ -6,6 +6,7 @@ import type {
   DeductionGraph,
   DeductionGraphEdge,
   DeductionGraphNode,
+  DoctorState,
   EvidenceClusterId,
   EvidenceRelationship,
   EvidenceRelationshipType,
@@ -15,8 +16,11 @@ import type {
   Highlight,
   InvestigationTask,
   Paper,
+  QuestionNode,
+  QuestionRelation,
 } from '@/types';
 
+import { deriveDoctorState } from '@/services/doctorStateService';
 import { dbHelpers } from './db';
 import { evaluateTaskProgress, isFinalReportUnlocked } from './investigationRules';
 
@@ -54,6 +58,9 @@ interface PaperState {
   evidenceSubmissions: EvidenceSubmission[];
   evidenceRelationships: EvidenceRelationship[];
   deductionGraphs: DeductionGraph[];
+  questionNodes: QuestionNode[];
+  questionRelations: QuestionRelation[];
+  doctorState: DoctorState | null;
   activeTaskId: string | null;
   investigationPhase: 'setup' | 'investigate' | 'report';
 
@@ -102,6 +109,7 @@ interface PaperState {
   loadEvidenceSubmissions: (paperId: number) => Promise<void>;
   loadEvidenceRelationships: (paperId: number) => Promise<void>;
   loadDeductionGraphs: (paperId: number) => Promise<void>;
+  loadQuestionState: (paperId: number) => Promise<void>;
   submitEvidence: (taskId: string, highlightId: number, evidenceType: EvidenceType, note: string) => Promise<number>;
   assignEvidenceCluster: (submissionId: number, clusterId: EvidenceClusterId | null) => Promise<void>;
   updateEvidenceTags: (submissionId: number, aiTags: string[]) => Promise<void>;
@@ -114,6 +122,12 @@ interface PaperState {
   ) => Promise<number>;
   deleteEvidenceRelationship: (relationshipId: number) => Promise<void>;
   saveDeductionGraph: (taskId: string, nodes: DeductionGraphNode[], edges: DeductionGraphEdge[]) => Promise<void>;
+  saveQuestionState: (
+    paperId: number,
+    questionNodes: QuestionNode[],
+    questionRelations: QuestionRelation[],
+    doctorState: DoctorState | null
+  ) => Promise<void>;
   applyEvidenceClusterSuggestions: (
     updates: Array<{ submissionId: number; clusterId: EvidenceClusterId; aiTags?: string[] }>
   ) => Promise<void>;
@@ -145,6 +159,9 @@ export const usePaperStore = create<PaperState>((set, get) => ({
   evidenceSubmissions: [],
   evidenceRelationships: [],
   deductionGraphs: [],
+  questionNodes: [],
+  questionRelations: [],
+  doctorState: null,
   activeTaskId: null,
   investigationPhase: 'setup',
   selectedPriority: 'important',
@@ -333,6 +350,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       void get().loadEvidenceSubmissions(paper.id!);
       void get().loadEvidenceRelationships(paper.id!);
       void get().loadDeductionGraphs(paper.id!);
+      void get().loadQuestionState(paper.id!);
     }
   },
 
@@ -374,6 +392,9 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           evidenceSubmissions: [],
           evidenceRelationships: [],
           deductionGraphs: [],
+          questionNodes: [],
+          questionRelations: [],
+          doctorState: null,
           activeTaskId: null,
           investigationPhase: 'setup',
         });
@@ -712,6 +733,20 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     }
   },
 
+  loadQuestionState: async (paperId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const [questionNodes, questionRelations, doctorState] = await Promise.all([
+        dbHelpers.getQuestionNodes(paperId),
+        dbHelpers.getQuestionRelations(paperId),
+        dbHelpers.getDoctorState(paperId),
+      ]);
+      set({ questionNodes, questionRelations, doctorState: doctorState ?? null, isLoading: false });
+    } catch (error) {
+      set({ error: (error as Error).message, isLoading: false });
+    }
+  },
+
   submitEvidence: async (taskId, highlightId, evidenceType, note) => {
     const { currentPaper } = get();
     if (!currentPaper?.id) {
@@ -761,9 +796,33 @@ export const usePaperStore = create<PaperState>((set, get) => ({
             items: (group.items || []).filter((item) => item.id !== highlightId),
           };
         });
+        const nextQuestionNodes = (state.questionNodes ?? []).map((question) => {
+          if (question.id !== `question-${taskId}`) {
+            return question;
+          }
+
+          return {
+            ...question,
+            assignedEvidenceIds: question.assignedEvidenceIds.includes(id)
+              ? question.assignedEvidenceIds
+              : [...question.assignedEvidenceIds, id],
+            status:
+              question.status === 'open' && question.assignedEvidenceIds.length === 0
+                ? 'partial'
+                : question.status,
+          };
+        });
+        const nextDoctorState = deriveDoctorState({
+          paperId: currentPaper.id!,
+          questionNodes: nextQuestionNodes,
+          questionRelations: state.questionRelations ?? [],
+          previousDoctorState: state.doctorState,
+        });
 
         return {
           evidenceSubmissions: nextEvidenceSubmissions,
+          questionNodes: nextQuestionNodes,
+          doctorState: nextDoctorState,
           groups: nextGroups,
           investigationTasks: nextTasks,
           activeTaskId: preservedActiveTask?.id ?? nextActiveTask?.id ?? null,
@@ -881,7 +940,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       throw new Error('No active paper selected');
     }
 
-    set({ isLoading: true, error: null });
+    set({ error: null });
 
     try {
       const updatedAt = new Date().toISOString();
@@ -899,8 +958,37 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           ...state.deductionGraphs.filter((item) => item.taskId !== taskId),
           { ...graph, id },
         ],
-        isLoading: false,
       }));
+    } catch (error) {
+      set({ error: (error as Error).message });
+      throw error;
+    }
+  },
+
+  saveQuestionState: async (paperId, questionNodes, questionRelations, doctorState) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const nextDoctorState =
+        deriveDoctorState({
+          paperId,
+          questionNodes,
+          questionRelations,
+          previousDoctorState: doctorState ?? get().doctorState,
+        }) ?? doctorState;
+
+      await dbHelpers.saveQuestionNodes(paperId, questionNodes);
+      await dbHelpers.saveQuestionRelations(paperId, questionRelations);
+      if (nextDoctorState) {
+        await dbHelpers.saveDoctorState(nextDoctorState);
+      }
+
+      set({
+        questionNodes,
+        questionRelations,
+        doctorState: nextDoctorState,
+        isLoading: false,
+      });
     } catch (error) {
       set({ error: (error as Error).message, isLoading: false });
       throw error;
@@ -942,8 +1030,8 @@ export const usePaperStore = create<PaperState>((set, get) => ({
   },
 
   applyTaskEvaluation: (taskId, evaluation) =>
-    set((state) => ({
-      investigationTasks: state.investigationTasks.map((task) =>
+    set((state) => {
+      const nextTasks = state.investigationTasks.map((task) =>
         task.id === taskId
           ? {
               ...task,
@@ -952,10 +1040,57 @@ export const usePaperStore = create<PaperState>((set, get) => ({
               submittedAt: evaluation.submittedAt ?? new Date().toISOString(),
             }
           : task
-      ),
-    })),
+      );
 
-  setActiveTask: (taskId) => set({ activeTaskId: taskId }),
+      const nextQuestionNodes = (state.questionNodes ?? []).map((question) => {
+        if (question.id !== `question-${taskId}`) {
+          return question;
+        }
+
+        const nextStatus: QuestionNode['status'] =
+          question.type === 'limitation'
+            ? 'limited'
+            : evaluation.score >= 85
+              ? 'supported'
+              : evaluation.score >= 60
+                ? 'partial'
+                : 'conflicted';
+
+        return {
+          ...question,
+          score: evaluation.score,
+          feedback: evaluation.feedback,
+          status: nextStatus,
+        };
+      });
+
+      const nextDoctorState = state.currentPaper?.id
+        ? deriveDoctorState({
+            paperId: state.currentPaper.id,
+            questionNodes: nextQuestionNodes,
+            questionRelations: state.questionRelations ?? [],
+            previousDoctorState: state.doctorState,
+          })
+        : state.doctorState;
+
+      return {
+        investigationTasks: nextTasks,
+        questionNodes: nextQuestionNodes,
+        doctorState: nextDoctorState,
+      };
+    }),
+
+  setActiveTask: (taskId) =>
+    set((state) => ({
+      activeTaskId: taskId,
+      doctorState: state.doctorState
+        ? {
+            ...state.doctorState,
+            activeQuestionId: taskId ? `question-${taskId}` : null,
+            updatedAt: new Date().toISOString(),
+          }
+        : state.doctorState,
+    })),
 
   setInvestigationPhase: (phase) => set({ investigationPhase: phase }),
 
